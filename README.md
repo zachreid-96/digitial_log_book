@@ -1,34 +1,32 @@
-## Digital Log Book
+# Digital Logbook
 
-This project serves as a personal log book sorting project. I work on copiers and printers, when using parts on a machine I like to keep a log of some information. Each part has a 'sticker' that contains part number and some other non-important bits (at least in the scope for this project). I place these stickers on a meter page for the machine I used it on. Information used in this scope is Brand name, Date of service, Serial number of machine.
+The **Digital Logbook** project is designed to help track copier and printer service information, particularly related to parts used during repairs. The system organizes data from scanned meter pages, each containing stickers with part numbers, and stores relevant details like the machine’s brand, date of service, and serial number.
 
-This project needs some setup in order for it to work as programmed.</br>
-These meter pages will need scanned to .pdf format.</br>
-PDF24 will need installed on local device for the OCR'ing of files. This also doubles as a viable .pdf viewer.</br>
-Python3.11+ will need installed on local device.</br>
-Libraries used in project include: glob2, win32api, os, shutil, time, datetime, re, pdfminer.high_level (pdfminer.six), logging</br>
-&emsp;install instructions can be found in setup() in main.py if not already installed.
+## Key Features:
+- **OCR Processing**: Scanned meter pages (PDF format) are processed using OCR (via PDF24) to extract relevant information.
+- **File Sorting**: Based on the extracted data, files are categorized into brand-specific folders (Kyocera, HP, Inventory) or flagged for manual review if key data is missing or invalid.
+- **Customizable Folder Structure**: Organizes files into:
+    - `Unsorted`: Files pending OCR processing
+    - `runLogs`: Logs for each runtime
+    - `Manual_Sort`: Files for manual review
+    - `Logs`: Meter pages with stickers
+    - `Inventory Restock`: Pages related to inventory management
+    - `temp`: Temporary folder for processing files (if setup is on the C: drive)
+    
+## Requirements:
+- **Software**: 
+    - PDF24 (for OCR and PDF viewing)
+    - Python 3.11+ 
+- **Libraries**: `glob2`, `win32api`, `os`, `shutil`, `time`, `datetime`, `re`, `pdfminer.high_level`, `logging`
+    - Install instructions are available in the `setup()` function in `main.py` if libraries are not already installed.
 
+## Workflow:
+1. Process files from `C:.\temp`
+2. Apply OCR to all files
+3. Extract and validate key data: Date, Serial Number, Brand
+4. Sort files into appropriate folders based on extracted data
+5. Flag invalid files for manual review
+6. Move remaining files from `Unsorted` to `temp` for next processing cycle
+7. Repeat
 
-The folder structure should be as follows:</br>
-&emsp;?:\.\Digital Log Book\Unsorted&emsp;&emsp;&emsp;&ensp;Used to house files that need sorted</br>
-&emsp;?:\.\Digital Log Book\runLogs&emsp;&emsp;&emsp;&emsp;Used to house the run logs for each runtime</br>
-&emsp;?:\.\Digital Log Book\Manual_Sort&emsp;&emsp;Used to house the files marked for manual review</br>
-&emsp;?:\.\Digital Log Book\Logs&emsp;&emsp;&emsp;&emsp;&emsp;&ensp;Used to house the meter pages (with stickers) for manufacturers</br>
-&emsp;?:\.\Digital Log Book&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Used to house the Inventory Restock pages</br>
-&emsp;C:\.\temp&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Used only if ?\. is not C:\</br>
-
-?\.\ is included here as my setup exists on an external USB Drive but can be setup anywhere.</br>
-If setup on C:\ the .\temp is not needed as PDF24-Ocr.exe can process files already located on C:\ but cannot process files not on C:\.
-
-The basic idea of this project is this:
-1) Process files in C:\.\temp
-2) Apply OCR to all files
-3) Read Data for each file and look for Date, Serial Number, and Brand ('Kyocera', 'HP', 'Inventory')
-4) Move file to brand destination if Date and Serial Number where found and are valid
-5) Move file to ?:\Digital Log Book\Manual_Sort if Date or Serial Number where not found or are not valid
-6) Move all files from ?:\Digital Log Book\Unsorted to C:\.\temp
-7) repeat steps 1-5
-
-
-This project will only be updated as needed.
+This project is intended for personal use and will be updated as needed.
