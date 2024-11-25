@@ -54,6 +54,12 @@ def setup():
         print("Please install re 'pip install regex'")
         import_error_count += 1
 
+    try:
+        import win32api
+    except ImportError:
+        print("Please install re 'pip install pywin32'")
+        import_error_count += 1
+
     return import_error_count == 0
 
 """
