@@ -12,14 +12,16 @@ Args:
 Returns:
     returns string array of data
 """
-def get_data(file):
 
+
+def get_data(file):
     try:
         data_raw = extract_text(file).upper()
         data = data_raw.split(" ")
     except Exception as e:
         data = None
     return data
+
 
 """
 Description: 
@@ -28,13 +30,16 @@ Description:
 Args:
     file: passed file that is ready to be processed and renamed
 """
-def manufacturer_wrapper(file):
+
+
+def manufacturer_wrapper(file, data):
     inventory_subset = {"SERVICE", "INVENTORY", "PICKING", "LIST"}
     kyocera_subset = {"KYOCERA", "STATUS", "PAGE"}
     hp_subset_1 = {"HP", "USAGE", "PAGE"}
     hp_subset_2 = {"HP", "USAGE", "TOTALS"}
 
-    data = get_data(file)
+    #data = get_data(file)
+    data = " ".join(data).split(" ")
 
     if data is None:
         file_manager_wrapper(file, None, None, None)
@@ -48,6 +53,7 @@ def manufacturer_wrapper(file):
     else:
         file_manager_wrapper(file, None, None, None)
 
+
 """
 Description: 
     called from manufacturer_wrapper for every inventory restock page found
@@ -57,6 +63,8 @@ Args:
     file: inventory restock page
     data: data from file (saves an additional I/O operation to read data)
 """
+
+
 def parse_inventory(file, data):
     date = None
 
@@ -74,6 +82,7 @@ def parse_inventory(file, data):
 
     file_manager_wrapper(file, None, date, "Inventory_Pages")
 
+
 """
 Description: 
     called from manufacturer_wrapper for every kyocera page found
@@ -84,6 +93,8 @@ Args:
     file: inventory restock page
     data: data from file (saves an additional I/O operation to read data)
 """
+
+
 def parse_kyocera(file, data):
     date = None
     serial_number = None
@@ -109,6 +120,7 @@ def parse_kyocera(file, data):
 
     file_manager_wrapper(file, serial_number, date, 'Kyocera')
 
+
 """
 Description: 
     called from manufacturer_wrapper for every hp page found
@@ -119,6 +131,8 @@ Args:
     file: inventory restock page
     data: data from file (saves an additional I/O operation to read data)
 """
+
+
 def parse_hp(file, data):
     date = None
     serial_number = None

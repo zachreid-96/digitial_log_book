@@ -90,8 +90,8 @@ if __name__ == '__main__':
 
     if files:
         for file in files:
-            ocr_file(file)
-            manufacturer_wrapper(file)
+            data = ocr_file(file)
+            manufacturer_wrapper(file, data)
 
     logger.info("Done processing all files in 'TEMP'...\n")
 
