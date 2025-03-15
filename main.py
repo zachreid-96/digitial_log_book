@@ -416,7 +416,6 @@ class Log_Book_GUI:
             "logbook_dir": str(Path(self.logbook_directory.get())),
             "inventory_dir": str(Path(self.inventory_page_directory.get())),
         }
-        print(data)
         with open("config.json", "w") as file:
             json.dump(data, file, indent=4)
 
