@@ -2,7 +2,9 @@ import os
 import re
 from datetime import datetime
 from pdfminer.high_level import extract_text
-from file_manager import file_manager_wrapper
+from file_manager import file_manager_wrapper, move_file_warning
+from rapidfuzz import fuzz
+from config import DirectoryManager
 
 """
 Description: 
@@ -12,14 +14,26 @@ Args:
 Returns:
     returns string array of data
 """
-def get_data(file):
 
+
+def get_data(file):
     try:
         data_raw = extract_text(file).upper()
         data = data_raw.split(" ")
     except Exception as e:
         data = None
     return data
+
+
+def fuzzy_subset(subset, data, threshold=80):
+    match_count = 0
+    for item in subset:
+        for data_item in data:
+            if fuzz.ratio(item.lower(), data_item.lower()) >= threshold:
+                match_count += 1
+                break
+    return match_count >= (len(subset) // 2)
+
 
 """
 Description: 
@@ -28,25 +42,29 @@ Description:
 Args:
     file: passed file that is ready to be processed and renamed
 """
-def manufacturer_wrapper(file):
+
+
+def manufacturer_wrapper(file, data):
     inventory_subset = {"SERVICE", "INVENTORY", "PICKING", "LIST"}
     kyocera_subset = {"KYOCERA", "STATUS", "PAGE"}
-    hp_subset_1 = {"HP", "USAGE", "PAGE"}
-    hp_subset_2 = {"HP", "USAGE", "TOTALS"}
+    hp_subset = {"HP", "USAGE", "PAGE", "TOTALS"}
 
-    data = get_data(file)
+    #data = get_data(file)
+
+    data = data.split()
 
     if data is None:
         file_manager_wrapper(file, None, None, None)
 
-    if inventory_subset.issubset(data):
+    if fuzzy_subset(inventory_subset, data, 80):
         parse_inventory(file, data)
-    elif kyocera_subset.issubset(data):
+    elif fuzzy_subset(kyocera_subset, data, 80):
         parse_kyocera(file, data)
-    elif hp_subset_1.issubset(data) or hp_subset_2.issubset(data):
+    elif fuzzy_subset(hp_subset, data, 80):
         parse_hp(file, data)
     else:
         file_manager_wrapper(file, None, None, None)
+
 
 """
 Description: 
@@ -57,6 +75,8 @@ Args:
     file: inventory restock page
     data: data from file (saves an additional I/O operation to read data)
 """
+
+
 def parse_inventory(file, data):
     date = None
 
@@ -74,6 +94,7 @@ def parse_inventory(file, data):
 
     file_manager_wrapper(file, None, date, "Inventory_Pages")
 
+
 """
 Description: 
     called from manufacturer_wrapper for every kyocera page found
@@ -84,11 +105,13 @@ Args:
     file: inventory restock page
     data: data from file (saves an additional I/O operation to read data)
 """
+
+
 def parse_kyocera(file, data):
     date = None
     serial_number = None
 
-    excluded_chars = "-_[].;:()"
+    excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
     excluded_phrase = ("dpi", "dpl", "dp1")
 
     # data = get_data(file)
@@ -109,6 +132,7 @@ def parse_kyocera(file, data):
 
     file_manager_wrapper(file, serial_number, date, 'Kyocera')
 
+
 """
 Description: 
     called from manufacturer_wrapper for every hp page found
@@ -119,6 +143,8 @@ Args:
     file: inventory restock page
     data: data from file (saves an additional I/O operation to read data)
 """
+
+
 def parse_hp(file, data):
     date = None
     serial_number = None
