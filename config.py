@@ -29,29 +29,6 @@ def setup_logger():
 
 """
 Description: 
-    Utilizes win32api to get drive letters based on drive names
-    used in this project due to project running on work computer and all files on external drive
-Args:
-    drive_name: name of the target drive that houses all the files
-Returns:
-    drive_letter: for example D:\\
-"""
-
-
-def find_drive_letter(drive_name):
-    drive_letter = None
-    for drive in GetLogicalDriveStrings().split('\000')[:-1]:
-        try:
-            if GetVolumeInformation(drive)[0] == drive_name:
-                drive_letter = drive
-                break
-        except Exception as e:
-            continue
-    return drive_letter
-
-
-"""
-Description: 
     used to convert 2 in 2/15/2024 to 2-February while utilizing a dictionary
     used to name folders in the folder structure
 Args:
@@ -84,14 +61,6 @@ Description:
     
 """
 
-manuals_drive = find_drive_letter("Manuals")
-
-if manuals_drive is None:
-    ## raise ValueError("External Drive 'Manuals' is not found...")
-    print("Please ensure External Drive 'Manuals' is installed...")
-    input("Exiting under DRIVE_NOT_FOUND. Press any key to exit...")
-    exit()
-
 #unsorted_path = rf"{manuals_drive}\Digital Log Book\Unsorted"
 #log_path = rf"{manuals_drive}\Digital Log Book\runLogs"
 #manual_sort_path = rf"{manuals_drive}\Digital Log Book\Manual_Sort"
@@ -116,8 +85,10 @@ class DirectoryManager:
             cls._instance.logbook_dir = ""
             cls._instance.inventory_dir = ""
             cls._instance.temp_dir = ""
-            cls._instance.logger = setup_logger()
+            cls._instance.logger = None
             cls._instance.load_directories_from_file()
+            cls._instance.fails = 0
+            cls._instance.successes = 0
         return cls._instance
 
     def load_directories_from_file(self):
@@ -131,9 +102,23 @@ class DirectoryManager:
                     self.logbook_dir = data.get("logbook_dir")
                     self.inventory_dir = data.get("inventory_dir")
                     self.temp_dir = data.get("temp_dir")
-                self.logger = setup_logger()
+                self.logger = None
+                self.fails = 0
+                self.successes = 0
             except json.JSONDecodeError:
-                self.logger.error("Failed to populate Singleton")
+                if self.logger is not None:
+                    self.logger.error("Failed to populate Singleton")
+                else:
+                    pass
+
+    def updated_fails(self):
+        self.fails += 1
+
+    def update_successes(self):
+        self.successes += 1
+
+    def create_logger(self):
+        self.logger = setup_logger()
 
     def get_unsorted_dir(self):
         return self.unsorted_dir

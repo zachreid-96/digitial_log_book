@@ -91,8 +91,6 @@ def parse_inventory(file, data):
                 date = datetime.strptime(entry.strip(), '%m/%d/%Y')
             except ValueError:
                 continue
-    if date is None:
-        move_file_warning(file)
 
     file_manager_wrapper(file, None, date, "Inventory_Pages")
 
@@ -113,7 +111,7 @@ def parse_kyocera(file, data):
     date = None
     serial_number = None
 
-    excluded_chars = "-_[].;:()#/?<>|\\"
+    excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
     excluded_phrase = ("dpi", "dpl", "dp1")
 
     # data = get_data(file)

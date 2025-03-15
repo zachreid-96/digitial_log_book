@@ -31,11 +31,8 @@ def file_manager_wrapper(file, serial_number, date, brand):
         new_filename = f"{date.month}-{date.day}-{date.year}_{serial_number}"
         move_file_success(file, new_filename, destination_folder)
 
-    elif serial_number is None and brand == "Inventory_Pages":
-        if date is None:
-            move_file_warning(file)
-
-        destination_folder = rf"{inventory_page_path}\{brand}\{date.year}\{convert_month_str(date.month)}"
+    elif serial_number is None and brand == "Inventory_Pages" and date is not None:
+        destination_folder = rf"{inventory_page_path}\{date.year}\{convert_month_str(date.month)}"
         os.makedirs(destination_folder, exist_ok=True)
 
         new_filename = f"{date.month}-{date.day}-{date.year}_Inventory"
@@ -102,7 +99,7 @@ def move_file_success(source, filename, destination, extension='pdf', multiple=T
     unsorted_path = path_manager.get_unsorted_dir()
     temp_path = path_manager.get_temp_dir()
     logger = path_manager.get_logger()
-    print(f"Moved to {os.path.join(destination, f'{filename}.{extension}')} || success")
+
     try:
         if multiple:
             if not os.path.exists(os.path.join(destination, f"{filename}.{extension}")):
@@ -113,20 +110,18 @@ def move_file_success(source, filename, destination, extension='pdf', multiple=T
                         \t DELETED {source.split("\\")[-1]} in {temp_path}
                         \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
-                #os.remove(rf"{unsorted_path}\{source.split("\\")[-1]}")
-
                 logger.info(message)
             else:
                 count = 1
                 while True:
                     if not os.path.exists(os.path.join(destination, f"{filename}_{count}.{extension}")):
-                        shutil.move(source, os.path.join(destination, f"{filename}.{extension}"))
+                        shutil.move(source, os.path.join(destination, f"{filename}_{count}.{extension}"))
 
                         message = f"""RENAMED {source.split("\\")[-1]} to {filename}_{count}.{extension}
                                             \t MOVED {filename}.{extension}_{count} to {destination}
                                             \t DELETED {source.split("\\")[-1]} in {temp_path}
                                             \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
-                        #os.remove(rf"{unsorted_path}\{source.split("\\")[-1]}")
+
                         logger.info(message)
                         break
                     count += 1
@@ -139,11 +134,10 @@ def move_file_success(source, filename, destination, extension='pdf', multiple=T
                         \t DELETED {source.split("\\")[-1]} in {temp_path}
                         \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
-                #os.remove(rf"{unsorted_path}\{source.split("\\")[-1]}")
-
                 logger.info(message)
+        path_manager.update_successes()
     except Exception as e:
-        print(e)
+        logger.warning(e)
         move_file_warning(source)
 
 
@@ -169,28 +163,28 @@ def move_file_warning(source, extension='pdf', multiple=True):
     temp_path = path_manager.get_temp_dir()
     logger = path_manager.get_logger()
 
+    path_manager.updated_fails()
+
     original_filename = source.split("\\")[-1][:-4]
-    print(f"Moved to {os.path.join(manual_sort_path, f'{original_filename}.{extension}')} || fail")
     if multiple:
         if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}.{extension}")):
             shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}.{extension}"))
 
             message = f"""UNABLE to parse DATE in document
-                    \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                    \t DELETED {source.split("\\")[-1]} in {temp_path}
-                    \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
-
+                        \t MOVED {original_filename}.{extension} to {manual_sort_path}
+                        \t DELETED {source.split("\\")[-1]} in {temp_path}
+                        \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
             logger.error(message)
         else:
             count = 1
             while True:
                 if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}_{count}.{extension}")):
-                    shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}.{extension}"))
+                    shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}_{count}.{extension}"))
 
                     message = f"""UNABLE to parse DATE in document
-                            \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                            \t DELETED {source.split("\\")[-1]} in {temp_path}
-                            \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
+                                \t MOVED {original_filename}.{extension} to {manual_sort_path}
+                                \t DELETED {source.split("\\")[-1]} in {temp_path}
+                                \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
 
                     logger.error(message)
                     break
@@ -200,8 +194,8 @@ def move_file_warning(source, extension='pdf', multiple=True):
             shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}.{extension}"))
 
             message = f"""UNABLE to parse DATE in document
-                    \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                    \t DELETED {source.split("\\")[-1]} in {temp_path}
-                    \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
+                        \t MOVED {original_filename}.{extension} to {manual_sort_path}
+                        \t DELETED {source.split("\\")[-1]} in {temp_path}
+                        \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
 
             logger.error(message)
