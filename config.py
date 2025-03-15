@@ -1,5 +1,4 @@
 import logging
-from win32api import GetVolumeInformation, GetLogicalDriveStrings
 from datetime import datetime
 import json
 import os

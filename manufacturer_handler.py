@@ -1,8 +1,7 @@
-import os
 import re
 from datetime import datetime
 from pdfminer.high_level import extract_text
-from file_manager import file_manager_wrapper, move_file_warning
+from file_manager import file_manager_wrapper
 from rapidfuzz import fuzz
 from config import DirectoryManager
 

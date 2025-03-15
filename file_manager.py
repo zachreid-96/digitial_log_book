@@ -45,23 +45,6 @@ def file_manager_wrapper(file, serial_number, date, brand):
 
 """
 Description: 
-    transfers all files to the 'temp_path'
-Args:
-    files: list of files that need moved
-"""
-
-
-def transfer_files_to_temp(files):
-    path_manager = DirectoryManager()
-    temp_path = path_manager.get_temp_dir()
-
-    for file in files:
-        filename = file.split("\\")[-1]
-        shutil.copy(file, f"{temp_path}\\{filename}")
-
-
-"""
-Description: 
     gets all files within the given folder that is passed
 Args:
     path: path of folder that houses files that need processed
