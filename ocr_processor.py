@@ -1,4 +1,3 @@
-import os
 import pytesseract
 import fitz
 from PIL import Image
@@ -11,6 +10,7 @@ def ocr_file(file):
     image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-    text = pytesseract.image_to_string(image, lang="eng")
+    custom_config = r'--oem 3 --psm 4 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890/ :;*'
+    text = pytesseract.image_to_string(image, lang="eng", config=custom_config)
 
     return text
