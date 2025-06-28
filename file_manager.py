@@ -1,7 +1,7 @@
-import glob
 import os
 import shutil
 from config import convert_month_str, DirectoryManager
+import glob
 
 """
 Description: 
@@ -80,7 +80,6 @@ Args:
 def move_file_success(source, filename, destination, extension='pdf', multiple=True):
     path_manager = DirectoryManager()
     unsorted_path = path_manager.get_unsorted_dir()
-    temp_path = path_manager.get_temp_dir()
     logger = path_manager.get_logger()
 
     try:
@@ -90,7 +89,6 @@ def move_file_success(source, filename, destination, extension='pdf', multiple=T
 
                 message = f"""RENAMED {source.split("\\")[-1]} to {filename}.{extension}
                         \t MOVED {filename}.{extension} to {destination}
-                        \t DELETED {source.split("\\")[-1]} in {temp_path}
                         \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
                 logger.info(message)
@@ -102,7 +100,6 @@ def move_file_success(source, filename, destination, extension='pdf', multiple=T
 
                         message = f"""RENAMED {source.split("\\")[-1]} to {filename}_{count}.{extension}
                                             \t MOVED {filename}.{extension}_{count} to {destination}
-                                            \t DELETED {source.split("\\")[-1]} in {temp_path}
                                             \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
                         logger.info(message)
@@ -114,7 +111,6 @@ def move_file_success(source, filename, destination, extension='pdf', multiple=T
 
                 message = f"""RENAMED {source.split("\\")[-1]} to {filename}.{extension}
                         \t MOVED {filename}.{extension} to {destination}
-                        \t DELETED {source.split("\\")[-1]} in {temp_path}
                         \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
                 logger.info(message)
@@ -143,7 +139,6 @@ def move_file_warning(source, extension='pdf', multiple=True):
     path_manager = DirectoryManager()
     unsorted_path = path_manager.get_unsorted_dir()
     manual_sort_path = path_manager.get_manual_sort_dir()
-    temp_path = path_manager.get_temp_dir()
     logger = path_manager.get_logger()
 
     path_manager.updated_fails()
@@ -155,8 +150,7 @@ def move_file_warning(source, extension='pdf', multiple=True):
 
             message = f"""UNABLE to parse DATE in document
                         \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                        \t DELETED {source.split("\\")[-1]} in {temp_path}
-                        \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
+                        \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
             logger.error(message)
         else:
             count = 1
@@ -166,8 +160,7 @@ def move_file_warning(source, extension='pdf', multiple=True):
 
                     message = f"""UNABLE to parse DATE in document
                                 \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                                \t DELETED {source.split("\\")[-1]} in {temp_path}
-                                \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
+                                \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
                     logger.error(message)
                     break
@@ -178,7 +171,6 @@ def move_file_warning(source, extension='pdf', multiple=True):
 
             message = f"""UNABLE to parse DATE in document
                         \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                        \t DELETED {source.split("\\")[-1]} in {temp_path}
-                        \t KEPT {source.split("\\")[-1]} in {unsorted_path}"""
+                        \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
 
             logger.error(message)
