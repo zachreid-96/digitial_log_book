@@ -1,479 +1,642 @@
 import webbrowser
 from config import DirectoryManager
+from database_handler import database_add_files
 from ocr_processor import ocr_file
 from manufacturer_handler import manufacturer_wrapper
 from file_manager import populate_files
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog
 import json
 from pathlib import Path
+import threading
+import glob
+import customtkinter as ct
+from datetime import datetime
 
 
-class Log_Book_GUI:
-    def __init__(self, gui_root):
-
-        self.root = gui_root
-        self.root.title("Log Book Automate Tool")
-        self.root.geometry("600x325")
-
-        self.last_menu_visited = ""
+class Log_Book_GUI(ct.CTk):
+    def __init__(self):
+        super().__init__()
 
         self.manager = DirectoryManager()
 
-        self.file_list = []
+        if self.manager.is_setup():
+            self.setup_project()
 
-        self.unsorted_button = None
-        self.unsorted_directory = None
-        self.unsorted_label = None
+        self.title("Digital Log Book")
+        self.geometry(f"{1000}x{450}")
+        self.minsize(750, 450)
 
-        self.log_button = None
-        self.log_directory = None
-        self.log_label = None
+        self.grid_columnconfigure(2, weight=1)
+        self.grid_rowconfigure((0, 1, 2), weight=1)
 
-        self.manual_sort_button = None
-        self.manual_sort_directory = None
-        self.manual_sort_label = None
+        self.sidebar_frame = ct.CTkFrame(self, width=140, corner_radius=0)
+        self.sidebar_frame.grid(row=0, column=0, rowspan=4, sticky="nsew")
+        self.sidebar_frame.grid_rowconfigure(6, weight=1)
 
-        self.logbook_label = None
-        self.logbook_directory = None
-        self.logbook_button = None
+        self.separator = ct.CTkFrame(self, fg_color="black", width=5)
+        self.separator.grid(row=0, column=1, rowspan=4, sticky="ns")
 
-        self.inventory_page_label = None
-        self.inventory_page_directory = None
-        self.inventory_page_button = None
+        self.user_menu_frame = ct.CTkFrame(self, corner_radius=0)
+        self.user_menu_frame.grid(row=0, column=2, rowspan=4, sticky="nsew")
+        self.user_menu_frame.grid_rowconfigure(1, weight=1)
 
-        self.readme_button = None
-        self.save_directories = None
-        self.start_button = None
-        self.verify_button = None
+        self.logo_label = ct.CTkLabel(self.sidebar_frame, text="Menu",
+                                      font=ct.CTkFont(size=20, weight="bold"))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
 
-        self.custom_topbar = tk.Frame(self.root)
-        self.custom_topbar.pack(side="top", fill="x")
+        self.Process_button = ct.CTkButton(self.sidebar_frame, text="Process",
+                                           command=self.show_process_menu)
+        self.Process_button.grid(row=1, column=0, padx=20, pady=10)
 
-        self.process_logs_button = tk.Button(
-            self.custom_topbar, text="Process Logs",
-            relief="flat", padx=10, pady=0,
-            command=self.process_menu_load
-        )
-        self.database_button = tk.Button(
-            self.custom_topbar, text="Database",
-            relief="flat", padx=10, pady=0,
-            command=self.database_menu_load
-        )
-        self.settings_button = tk.Button(
-            self.custom_topbar, text="Settings",
-            relief="flat", padx=10, pady=0,
-            command=self.settings_menu_load
-        )
-        self.help_button = tk.Button(
-            self.custom_topbar, text="Help",
-            relief="flat", padx=10, pady=0,
-            command=self.help_menu_load
-        )
+        self.Database_button = ct.CTkButton(self.sidebar_frame, text="Database",
+                                            command=self.show_database_menu)
+        self.Database_button.grid(row=2, column=0, padx=20, pady=10)
 
-        self.process_logs_button.pack(side=tk.LEFT)
-        self.database_button.pack(side=tk.LEFT)
-        self.settings_button.pack(side=tk.LEFT)
-        self.help_button.pack(side=tk.LEFT)
+        self.Settings_button = ct.CTkButton(self.sidebar_frame, text="Settings",
+                                            command=self.show_settings_menu)
+        self.Settings_button.grid(row=3, column=0, padx=20, pady=10)
 
-        self.settings_menu_frame = tk.Frame(self.root)
-        self.process_menu_frame = tk.Frame(self.root)
-        self.database_menu_frame = tk.Frame(self.root)
-        self.help_menu_frame = tk.Frame(self.root)
+        self.Help_button = ct.CTkButton(self.sidebar_frame, text="Help",
+                                        command=self.show_help_menu)
+        self.Help_button.grid(row=4, column=0, padx=20, pady=10)
 
-        self.verified_var = None
-        self.progress = None
-        self.discovery_var = None
-        self.process_var = None
-        self.success_var = None
-        self.fail_var = None
+        self.About_button = ct.CTkButton(self.sidebar_frame, text="About",
+                                         command=self.show_about_menu)
+        self.About_button.grid(row=5, column=0, padx=20, pady=10)
 
-        self.verified_label = None
-        self.progress_start_label = None
-        self.discovery_label = None
-        self.process_label = None
-        self.success_label = None
-        self.fail_label = None
+        self.current_view = None
 
-        self.process_menu_load()
+        self._switch_view(ProcessMenu)
 
-    def settings_menu_load(self):
+    def open_input_dialog_event(self):
+        dialog = ct.CTkInputDialog(text="Type in a number:", title="CTkInputDialog")
+        print("CTkInputDialog:", dialog.get_input())
 
-        if self.last_menu_visited == "settings_menu":
-            return
+    def change_appearance_mode_event(self, new_appearance_mode: str):
+        ct.set_appearance_mode(new_appearance_mode)
 
-        if self.last_menu_visited == "process_menu":
-            self.last_menu_visited = "settings_menu"
-            for widget in self.process_menu_frame.winfo_children():
-                widget.destroy()
-            self.process_menu_frame.pack_forget()
-            self.process_logs_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "database_menu":
-            self.last_menu_visited = "settings_menu"
-            for widget in self.database_menu_frame.winfo_children():
-                widget.destroy()
-            self.database_menu_frame.pack_forget()
-            self.database_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "help_menu":
-            self.last_menu_visited = "settings_menu"
-            for widget in self.help_menu_frame.winfo_children():
-                widget.destroy()
-            self.help_menu_frame.pack_forget()
-            self.help_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "":
-            self.last_menu_visited = "settings_menu"
+    def change_scaling_event(self, new_scaling: str):
+        new_scaling_float = int(new_scaling.replace("%", "")) / 100
+        ct.set_widget_scaling(new_scaling_float)
 
-        self.settings_button.config(bg="#D9D9D9")
-        self.settings_menu_frame.pack(fill="both", expand=True)
+    def _switch_view(self, view_class):
+        if self.current_view:
+            self.current_view.destroy()
 
-        directory_unsorted = ttk.Frame(self.settings_menu_frame)
-        directory_unsorted.pack(pady=5, fill=tk.X, padx=10)
+        self.current_view = view_class(self.user_menu_frame)
+        self.current_view.pack(fill="both", expand=True)
 
-        self.unsorted_label = ttk.Label(directory_unsorted, text="Unsorted")
-        self.unsorted_label.pack(side=tk.LEFT)
-        self.unsorted_directory = ttk.Entry(directory_unsorted, width=50)
-        self.unsorted_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-        self.unsorted_button = ttk.Button(directory_unsorted, text="Browse",
-                                          command=lambda: self.select_directory("unsorted"))
-        self.unsorted_button.pack(side=tk.RIGHT)
+    def show_process_menu(self):
+        self._switch_view(ProcessMenu)
 
-        directory_logs = ttk.Frame(self.settings_menu_frame)
-        directory_logs.pack(pady=5, fill=tk.X, padx=10)
+    def show_database_menu(self):
+        self._switch_view(DatabaseMenu)
 
-        self.log_label = ttk.Label(directory_logs, text="Runtime Logs")
-        self.log_label.pack(side=tk.LEFT)
-        self.log_directory = ttk.Entry(directory_logs, width=50)
-        self.log_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-        self.log_button = ttk.Button(directory_logs, text="Browse", command=lambda: self.select_directory("log"))
-        self.log_button.pack(side=tk.RIGHT)
+    def show_settings_menu(self):
+        self._switch_view(SettingsMenu)
 
-        directory_manual = ttk.Frame(self.settings_menu_frame)
-        directory_manual.pack(pady=5, fill=tk.X, padx=10)
+    def show_help_menu(self):
+        self._switch_view(HelpMenu)
 
-        self.manual_sort_label = ttk.Label(directory_manual, text="Manual Sort")
-        self.manual_sort_label.pack(side=tk.LEFT)
-        self.manual_sort_directory = ttk.Entry(directory_manual, width=50)
-        self.manual_sort_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-        self.manual_sort_button = ttk.Button(directory_manual, text="Browse",
-                                             command=lambda: self.select_directory("manual_sort"))
-        self.manual_sort_button.pack(side=tk.RIGHT)
+    def show_about_menu(self):
+        self._switch_view(AboutMenu)
 
-        directory_logbook = ttk.Frame(self.settings_menu_frame)
-        directory_logbook.pack(pady=5, fill=tk.X, padx=10)
+    def setup_project(self):
 
-        self.logbook_label = ttk.Label(directory_logbook, text="Logbook")
-        self.logbook_label.pack(side=tk.LEFT)
-        self.logbook_directory = ttk.Entry(directory_logbook, width=50)
-        self.logbook_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-        self.logbook_button = ttk.Button(directory_logbook, text="Browse",
-                                         command=lambda: self.select_directory("logbook"))
-        self.logbook_button.pack(side=tk.RIGHT)
+        pathing = os.path.join(os.environ['USERPROFILE'], 'Parts_Log')
 
-        directory_inventory = ttk.Frame(self.settings_menu_frame)
-        directory_inventory.pack(pady=5, fill=tk.X, padx=10)
+        if not os.path.exists(pathing):
+            os.mkdir(pathing)
 
-        self.inventory_page_label = ttk.Label(directory_inventory, text="Inventory Pages")
-        self.inventory_page_label.pack(side=tk.LEFT)
-        self.inventory_page_directory = ttk.Entry(directory_inventory, width=50)
-        self.inventory_page_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-        self.inventory_page_button = ttk.Button(directory_inventory, text="Browse",
-                                                command=lambda: self.select_directory("inventory_page"))
-        self.inventory_page_button.pack(side=tk.RIGHT)
+        manual_sort = os.path.join(pathing, 'Manual Sorting Required')
+        runtime_logs = os.path.join(pathing, 'Runtime Logs')
+        ready_sort = os.path.join(pathing, 'Ready to Sort Pages')
+        inventory_pages = os.path.join(pathing, 'Inventory Pages')
+        used_parts = os.path.join(pathing, 'Used Parts Logs')
+        reports = os.path.join(pathing, 'Reports')
 
-        buttons_frame = ttk.Frame(self.settings_menu_frame)
-        buttons_frame.pack(pady=5, fill=tk.X, padx=10)
+        for folder in [manual_sort, runtime_logs, ready_sort, inventory_pages, used_parts, reports]:
+            if not os.path.exists(folder):
+                os.mkdir(folder)
 
-        self.save_directories = ttk.Button(buttons_frame, text="Save Directories", command=self.save_directories)
+        database_file = os.path.join(pathing, 'Used Parts Database.db')
 
-        self.save_directories.pack(pady=5, fill=tk.X, padx=10)
+        if not os.path.exists(database_file):
+            with open(database_file, 'w') as f:
+                pass
+
+        json_dict = {
+            'unsorted_dir': ready_sort,
+            'runlog_dir': runtime_logs,
+            'manual_sort_dir': manual_sort,
+            'logbook_dir': used_parts,
+            'inventory_dir': inventory_pages,
+            'database_dir': database_file,
+            'reports_dir': reports
+        }
+
+        self.manager.write_config_file(json_dict)
+
+
+class ProcessMenu(ct.CTkFrame):
+
+    def __init__(self, master):
+        super().__init__(master)
+
+        self.manager = DirectoryManager()
+
+        self.unsorted_label = ct.CTkLabel(self, text="Pages Ready to Sort:")
+        self.unsorted_label.grid(row=0, column=0, columnspan=3, sticky="e", pady=(40, 10))
+        self.unsorted_directory = ct.CTkLabel(self, text=self.manager.get_unsorted_dir())
+        self.unsorted_directory.grid(row=0, column=3, columnspan=4, sticky="w", padx=25, pady=(40, 10))
+
+        self.log_label = ct.CTkLabel(self, text="Runtime Logs:")
+        self.log_label.grid(row=1, column=0, columnspan=3, sticky="e", pady=10)
+        self.log_directory = ct.CTkLabel(self, text=self.manager.get_runlog_dir())
+        self.log_directory.grid(row=1, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+
+        self.manual_sort_label = ct.CTkLabel(self, text="Manual Sorting Required:")
+        self.manual_sort_label.grid(row=2, column=0, columnspan=3, sticky="e", pady=10)
+        self.manual_sort_directory = ct.CTkLabel(self, text=self.manager.get_manual_sort_dir())
+        self.manual_sort_directory.grid(row=2, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+
+        self.logbook_label = ct.CTkLabel(self, text="Used Parts:")
+        self.logbook_label.grid(row=3, column=0, columnspan=3, sticky="e", pady=10)
+        self.logbook_directory = ct.CTkLabel(self, text=self.manager.get_logbook_dir())
+        self.logbook_directory.grid(row=3, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+
+        self.inventory_page_label = ct.CTkLabel(self, text="Inventory Pages:")
+        self.inventory_page_label.grid(row=4, column=0, columnspan=3, sticky="e", pady=10)
+        self.inventory_page_directory = ct.CTkLabel(self, text=self.manager.get_inventory_dir())
+        self.inventory_page_directory.grid(row=4, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+
+        self.start_button = ct.CTkButton(self, text="Start Process")
+        #                                 command=self.run_process_files)
+        self.start_button.grid(row=5, column=0, sticky="w", padx=25, pady=10, columnspan=3)
+        self.start_button.configure(state="normal")
+
+        self.progress = tk.StringVar(value="Status...")
+        self.success_var = tk.StringVar(value="Files Sorted: ")
+        self.fail_var = tk.StringVar(value="Files Needing Manual Sorting: ")
+
+        self.progress_start_label = ct.CTkLabel(self, textvariable=self.progress, anchor="w", width=35)
+        self.success_label = ct.CTkLabel(self, textvariable=self.success_var, anchor="w", width=35)
+        self.fail_label = ct.CTkLabel(self, textvariable=self.fail_var, anchor="w", width=35)
+
+        self.progress_start_label.grid(row=5, column=3, columnspan=2, sticky="w", padx=25, pady=10)
+        self.success_label.grid(row=6, column=0, columnspan=3, sticky="w", padx=25, pady=10)
+        self.fail_label.grid(row=6, column=2, columnspan=3, sticky="w", padx=25, pady=10)
+
+    def run_process_files(self):
+
+        thread = threading.Thread(target=self.thread_process)
+        thread.start()
+
+    def sort_key(self, file):
+        name = Path(file).stem.split('_')
+
+        if len(name) == 3:
+            return 1, name
+        elif len(name) == 2:
+            return 0, name
+
+    def thread_process(self):
+
+        self.manager.create_logger()
+
+        path = self.manager.unsorted_dir
+
+        files = populate_files(path)
+        self.progress.set("Status... EXTRACTING DATA FROM LOGS")
+
+        if files:
+            for file in files:
+                data = ocr_file(file)
+                manufacturer_wrapper(file, data)
+
+        self.progress.set("Status... ADDING DATA TO DATABASE")
+        self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
+
+        # Get files
+        files = []
+        for file in glob.glob(str(Path(self.manager.get_logbook_dir()).resolve() / '**' / '*.pdf'), recursive=True):
+            files.append(file)
+
+        files_sorted = sorted(files, key=self.sort_key)
+
+        for file in files_sorted:
+            database_add_files(file)
+
+        self.progress.set("Status... DONE")
+
+
+class DatabaseMenu(ct.CTkFrame):
+
+    def __init__(self, master):
+        super().__init__(master)
+
+        self.manager = DirectoryManager()
+
+        self.report_label = ct.CTkLabel(self, text="Generate Pre-determined Reports",
+                                        font=ct.CTkFont(size=15, weight="bold"))
+        self.report_label.grid(row=0, column=0, padx=20, pady=(20, 10), columnspan=4, sticky='news')
+
+        self.open_reports = ct.CTkButton(self, text="Open Reports",
+                                                  command=self.open_report_folder)
+        self.open_reports.grid(row=3, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.report_month_1 = ct.CTkButton(self, text="1 Month Report",
+                                                  command=lambda: self.generate_report(1))
+        self.report_month_1.grid(row=1, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.report_month_3 = ct.CTkButton(self, text="3 Month Report",
+                                                  command=lambda: self.generate_report(3))
+        self.report_month_3.grid(row=1, column=2, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.report_month_6 = ct.CTkButton(self, text="6 Month Report",
+                                                  command=lambda: self.generate_report(6))
+        self.report_month_6.grid(row=1, column=4, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.report_month_9 = ct.CTkButton(self, text="9 Month Report",
+                                                  command=lambda: self.generate_report(9))
+        self.report_month_9.grid(row=2, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.report_month_12 = ct.CTkButton(self, text="12 Month Report",
+                                                  command=lambda: self.generate_report(12))
+        self.report_month_12.grid(row=2, column=2, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.report_last_inventory = ct.CTkButton(self, text="Last Inventory",
+                                                  command=lambda: self.generate_report("last_inventory"))
+        self.report_last_inventory.grid(row=2, column=4, padx=20, pady=10, columnspan=2, sticky='news')
+
+    def subtract_time(self, time_frame, current_time):
+
+        new_month = current_time.month - time_frame
+        new_year = current_time.year
+
+        if new_month <= 0:
+            new_month += 12
+            new_year -= 1
+
+        return f"{new_month}-{current_time.day}-{new_year}"
+
+    def open_report_folder(self):
+
+        os.startfile(self.manager.get_reports_dir())
+
+    def generate_report(self, time_frame):
+
+        current_date = datetime.now()
+        report_time = None
+
+        if time_frame == 1:
+            report_time = self.subtract_time(1, current_date)
+        elif time_frame == 3:
+            report_time = self.subtract_time(3, current_date)
+        elif time_frame == 6:
+            report_time = self.subtract_time(6, current_date)
+        elif time_frame == 9:
+            report_time = self.subtract_time(9, current_date)
+        elif time_frame == 12:
+            report_time = self.subtract_time(12, current_date)
+        elif time_frame == "last_inventory":
+            report_time = self.manager.get_last_inventory_date()
+
+        if report_time:
+            command = f"""SELECT 
+                                m.DATE,
+                                m.SERIAL_NUM,
+                                GROUP_CONCAT(p.PARTS_USED || ' x' || p.QUANTITY, ',') AS Parts_List,
+                                f.FILE_PATH
+                            FROM MACHINES m
+                            LEFT JOIN PARTS_USED p ON m.ENTRY_ID = p.ENTRY_ID
+                            LEFT JOIN FILE_HASH f ON m.ENTRY_ID = f.ENTRY_ID
+                            WHERE m.DATE >= {report_time}
+                            GROUP BY m.ENTRY_ID;"""
+
+            print(command)
+
+        return
+
+
+class SettingsMenu(ct.CTkFrame):
+
+    def __init__(self, master):
+        super().__init__(master)
+
+        self.manager = DirectoryManager()
+
+        magic_width = self.manager.longest_dir_pixel
+
+        self.unsorted_label = ct.CTkLabel(self, text="Pages Ready to Sort:")
+        self.unsorted_label.grid(row=0, column=0, columnspan=3, sticky="e", pady=10)
+        self.unsorted_directory = ct.CTkEntry(self, width=magic_width)
+        self.unsorted_directory.grid(row=0, column=3, columnspan=8, sticky="w", padx=25, pady=10)
+        self.unsorted_button = ct.CTkButton(self, text="Browse",
+                                            command=lambda: self.select_directory("unsorted"))
+        self.unsorted_button.grid(row=0, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+
+        self.log_label = ct.CTkLabel(self, text="Runtime Logs:")
+        self.log_label.grid(row=1, column=0, columnspan=3, sticky="e", pady=10)
+        self.log_directory = ct.CTkEntry(self, width=magic_width)
+        self.log_directory.grid(row=1, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+        self.log_button = ct.CTkButton(self, text="Browse", command=lambda: self.select_directory("log"))
+        self.log_button.grid(row=1, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+
+        self.manual_sort_label = ct.CTkLabel(self, text="Manual Sorting Required:")
+        self.manual_sort_label.grid(row=2, column=0, columnspan=3, sticky="e", pady=10)
+        self.manual_sort_directory = ct.CTkEntry(self, width=magic_width)
+        self.manual_sort_directory.grid(row=2, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+        self.manual_sort_button = ct.CTkButton(self, text="Browse",
+                                               command=lambda: self.select_directory("manual_sort"))
+        self.manual_sort_button.grid(row=2, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+
+        self.logbook_label = ct.CTkLabel(self, text="Used Parts:")
+        self.logbook_label.grid(row=3, column=0, columnspan=3, sticky="e", pady=10)
+        self.logbook_directory = ct.CTkEntry(self, width=magic_width)
+        self.logbook_directory.grid(row=3, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+        self.logbook_button = ct.CTkButton(self, text="Browse",
+                                           command=lambda: self.select_directory("logbook"))
+        self.logbook_button.grid(row=3, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+
+        self.inventory_page_label = ct.CTkLabel(self, text="Inventory Pages:")
+        self.inventory_page_label.grid(row=4, column=0, columnspan=3, sticky="e", pady=10)
+        self.inventory_page_directory = ct.CTkEntry(self, width=magic_width)
+        self.inventory_page_directory.grid(row=4, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+        self.inventory_page_button = ct.CTkButton(self, text="Browse",
+                                                  command=lambda: self.select_directory("inventory_page"))
+        self.inventory_page_button.grid(row=4, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+
+        self.database_label = ct.CTkLabel(self, text="Used Parts Database:")
+        self.database_label.grid(row=5, column=0, columnspan=3, sticky="e", pady=10)
+        self.database_directory = ct.CTkEntry(self, width=magic_width)
+        self.database_directory.grid(row=5, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+        self.database_button = ct.CTkButton(self, text="Browse",
+                                            command=lambda: self.select_file("database"))
+        self.database_button.grid(row=5, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+
+        self.save_directories = ct.CTkButton(self, text="Save Directories",
+                                             command=self.save_directories_locations)
+
+        self.save_directories.grid(row=6, column=2, columnspan=2, sticky="w", padx=25, pady=10)
+
+        self.appearance_mode_label = ct.CTkLabel(self, text="Appearance Mode:", anchor="w")
+        self.appearance_mode_label.grid(row=7, column=1, padx=20, pady=(10, 0), columnspan=2)
+        self.appearance_mode_optionemenu = ct.CTkOptionMenu(self,
+                                                            values=["Light", "Dark", "System"],
+                                                            command=self.change_appearance_mode_event)
+        self.appearance_mode_optionemenu.grid(row=8, column=1, padx=20, pady=(10, 10), columnspan=2)
+        self.appearance_mode_optionemenu.set("System")
+
+        self.scaling_label = ct.CTkLabel(self, text="UI Scaling:", anchor="w")
+        self.scaling_label.grid(row=7, column=3, padx=20, pady=(10, 0), columnspan=2)
+        self.scaling_optionemenu = ct.CTkOptionMenu(self,
+                                                    values=["80%", "90%", "100%", "110%", "120%"],
+                                                    command=self.change_scaling_event)
+        self.scaling_optionemenu.grid(row=8, column=3, padx=20, pady=(10, 20), columnspan=2)
+        self.scaling_optionemenu.set("100%")
 
         self.populate_directories()
 
-    def process_menu_load(self):
+    def change_appearance_mode_event(self, new_appearance_mode: str):
+        ct.set_appearance_mode(new_appearance_mode)
 
-        if self.last_menu_visited == "process_menu":
-            return
-
-        if self.last_menu_visited == "settings_menu":
-            self.last_menu_visited = "process_menu"
-            for widget in self.settings_menu_frame.winfo_children():
-                widget.destroy()
-            self.settings_menu_frame.pack_forget()
-            self.settings_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "database_menu":
-            self.last_menu_visited = "process_menu"
-            for widget in self.database_menu_frame.winfo_children():
-                widget.destroy()
-            self.database_menu_frame.pack_forget()
-            self.database_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "help_menu":
-            self.last_menu_visited = "process_menu"
-            for widget in self.help_menu_frame.winfo_children():
-                widget.destroy()
-            self.help_menu_frame.pack_forget()
-            self.help_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "":
-            self.last_menu_visited = "process_menu"
-
-        self.process_logs_button.config(bg="#D9D9D9")
-        self.process_menu_frame.pack(fill="both", expand=True)
-
-        directory_unsorted = ttk.Frame(self.process_menu_frame)
-        directory_unsorted.pack(pady=5, fill=tk.X, padx=10)
-        self.unsorted_label = ttk.Label(directory_unsorted, text="Unsorted Directory:")
-        self.unsorted_label.pack(side=tk.LEFT)
-        self.unsorted_directory = ttk.Label(directory_unsorted, text=self.manager.get_unsorted_dir())
-        self.unsorted_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        directory_runtime = ttk.Frame(self.process_menu_frame)
-        directory_runtime.pack(pady=5, fill=tk.X, padx=10)
-        self.log_label = ttk.Label(directory_runtime, text="Runtime Log Directory:")
-        self.log_label.pack(side=tk.LEFT)
-        self.log_directory = ttk.Label(directory_runtime, text=self.manager.get_runlog_dir())
-        self.log_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        directory_manual_sort = ttk.Frame(self.process_menu_frame)
-        directory_manual_sort.pack(pady=5, fill=tk.X, padx=10)
-        self.manual_sort_label = ttk.Label(directory_manual_sort, text="Manual Sort Directory:")
-        self.manual_sort_label.pack(side=tk.LEFT)
-        self.manual_sort_directory = ttk.Label(directory_manual_sort, text=self.manager.get_manual_sort_dir())
-        self.manual_sort_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        directory_logbook = ttk.Frame(self.process_menu_frame)
-        directory_logbook.pack(pady=5, fill=tk.X, padx=10)
-        self.logbook_label = ttk.Label(directory_logbook, text="Logbook Directory:")
-        self.logbook_label.pack(side=tk.LEFT)
-        self.logbook_directory = ttk.Label(directory_logbook, text=self.manager.get_logbook_dir())
-        self.logbook_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        directory_inventory = ttk.Frame(self.process_menu_frame)
-        directory_inventory.pack(pady=5, fill=tk.X, padx=10)
-        self.inventory_page_label = ttk.Label(directory_inventory, text="Inventory Pages Directory:")
-        self.inventory_page_label.pack(side=tk.LEFT)
-        self.inventory_page_directory = ttk.Label(directory_inventory, text=self.manager.get_inventory_dir())
-        self.inventory_page_directory.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        buttons_frame = ttk.Frame(self.process_menu_frame)
-        buttons_frame.pack(pady=5, fill=tk.X, padx=10)
-
-        self.verify_button = ttk.Button(buttons_frame, text="Verify Directories",
-                                       command=lambda: self.verify_directories())
-        self.verify_button.grid(row=0, column=1, sticky="w", padx=5, pady=2)
-
-        self.start_button = ttk.Button(buttons_frame, text="Start Process",
-                                       command=lambda: self.run_process_files(self.manager.unsorted_dir))
-        self.start_button.grid(row=0, column=2, sticky="w", padx=5, pady=2)
-        self.start_button.config(state="disabled")
-
-        progress_frame = ttk.Frame(self.process_menu_frame)
-        progress_frame.pack(pady=5, fill=tk.X, padx=5)
-
-        self.verified_var = tk.StringVar(value="Verified...")
-        self.progress = tk.StringVar(value="Running...")
-        self.discovery_var = tk.StringVar(value="Discovering Files...")
-        self.process_var = tk.StringVar(value="Processing Files...")
-        self.success_var = tk.StringVar(value="Successful Files: ")
-        self.fail_var = tk.StringVar(value="Failed Files: ")
-
-        self.verified_label = tk.Label(progress_frame, textvariable=self.verified_var, anchor="w", width=35)
-        self.progress_start_label = tk.Label(progress_frame, textvariable=self.progress, anchor="w", width=35)
-        self.discovery_label = tk.Label(progress_frame, textvariable=self.discovery_var, anchor="w", width=35)
-        self.process_label = tk.Label(progress_frame, textvariable=self.process_var, anchor="w", width=35)
-        self.success_label = tk.Label(progress_frame, textvariable=self.success_var, anchor="w", width=35)
-        self.fail_label = tk.Label(progress_frame, textvariable=self.fail_var, anchor="w", width=35)
-
-        self.verified_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.progress_start_label.grid(row=0, column=1, sticky="w", padx=5, pady=2)
-        self.discovery_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.process_label.grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        self.success_label.grid(row=1, column=1, sticky="w", padx=5, pady=2)
-        self.fail_label.grid(row=2, column=1, sticky="w", padx=5, pady=2)
-
-        return
-
-    def database_menu_load(self):
-
-        if self.last_menu_visited == "database_menu":
-            return
-
-        if self.last_menu_visited == "settings_menu":
-            self.last_menu_visited = "database_menu"
-            for widget in self.settings_menu_frame.winfo_children():
-                widget.destroy()
-            self.settings_menu_frame.pack_forget()
-            self.settings_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "process_menu":
-            self.last_menu_visited = "database_menu"
-            for widget in self.process_menu_frame.winfo_children():
-                widget.destroy()
-            self.process_menu_frame.pack_forget()
-            self.process_logs_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "help_menu":
-            self.last_menu_visited = "database_menu"
-            for widget in self.help_menu_frame.winfo_children():
-                widget.destroy()
-            self.help_menu_frame.pack_forget()
-            self.help_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "":
-            self.last_menu_visited = "database_menu"
-
-        self.database_button.config(bg="#D9D9D9")
-        self.database_menu_frame.pack(fill="both", expand=True)
-
-        database_text = """
-        The Database Part of the Project has not yet been implemented.
-        
-        Please check again soon using the links found in Help.
-        """
-
-        database_label = ttk.Label(self.database_menu_frame, text=database_text, justify="center")
-        database_label.pack(pady=5)
-
-        return
-
-    def help_menu_load(self):
-
-        if self.last_menu_visited == "help_menu":
-            return
-
-        if self.last_menu_visited == "settings_menu":
-            self.last_menu_visited = "help_menu"
-            for widget in self.settings_menu_frame.winfo_children():
-                widget.destroy()
-            self.settings_menu_frame.pack_forget()
-            self.settings_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "process_menu":
-            self.last_menu_visited = "help_menu"
-            for widget in self.process_menu_frame.winfo_children():
-                widget.destroy()
-            self.process_menu_frame.pack_forget()
-            self.process_logs_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "database_menu":
-            self.last_menu_visited = "help_menu"
-            for widget in self.database_menu_frame.winfo_children():
-                widget.destroy()
-            self.database_menu_frame.pack_forget()
-            self.database_button.config(bg="#F0F0F0")
-        elif self.last_menu_visited == "":
-            self.last_menu_visited = "help_menu"
-
-        self.help_button.config(bg="#D9D9D9")
-        self.help_menu_frame.pack(fill="both", expand=True)
-
-        help_text = """This GUI/project is still a work in progress. Check often for updates.
-        Gui version 1.2.0
-        
-        Feel free to submit feature requests and bug reports.
-        See below for important links        
-        """
-        help_label = ttk.Label(self.help_menu_frame, text=help_text, justify="center")
-        help_label.pack(pady=5)
-
-        repo_button = ttk.Button(self.help_menu_frame, text="GitHub Releases", command=lambda: self.open_link("https://github.com/zachreid-96/digitial_log_book/releases"))
-        readme_button = ttk.Button(self.help_menu_frame, text="README/Setup", command=lambda: self.open_link("https://github.com/zachreid-96/digitial_log_book"))
-        issues_button = ttk.Button(self.help_menu_frame, text="Report Issue", command=lambda: self.open_link("https://github.com/zachreid-96/digitial_log_book/issues"))
-        repo_button.pack(pady=5, fill=tk.X, padx=10)
-        readme_button.pack(pady=5, fill=tk.X, padx=10)
-        issues_button.pack(pady=5, fill=tk.X, padx=10)
-
-        return
-
-    def open_link(self, link):
-        webbrowser.open(link)
+    def change_scaling_event(self, new_scaling: str):
+        new_scaling_float = int(new_scaling.replace("%", "")) / 100
+        ct.set_widget_scaling(new_scaling_float)
 
     def populate_directories(self):
-        self.unsorted_directory.delete(0, tk.END)
+        self.unsorted_directory.delete(0, len(self.manager.unsorted_dir))
         self.unsorted_directory.insert(0, self.manager.unsorted_dir)
 
-        self.log_directory.delete(0, tk.END)
+        self.log_directory.delete(0, len(self.manager.runlog_dir))
         self.log_directory.insert(0, self.manager.runlog_dir)
 
-        self.manual_sort_directory.delete(0, tk.END)
+        self.manual_sort_directory.delete(0, len(self.manager.manual_sort_dir))
         self.manual_sort_directory.insert(0, self.manager.manual_sort_dir)
 
-        self.logbook_directory.delete(0, tk.END)
+        self.logbook_directory.delete(0, len(self.manager.logbook_dir))
         self.logbook_directory.insert(0, self.manager.logbook_dir)
 
-        self.inventory_page_directory.delete(0, tk.END)
+        self.inventory_page_directory.delete(0, len(self.manager.inventory_dir))
         self.inventory_page_directory.insert(0, self.manager.inventory_dir)
 
-    def save_directories(self):
+        self.database_directory.delete(0, len(self.manager.database_dir))
+        self.database_directory.insert(0, self.manager.database_dir)
+
+    def select_file(self, option):
+        file = filedialog.askopenfilename(title="Select Database File")
+        if file:
+            if option == "database":
+                self.database_directory.delete(0, len(self.manager.database_dir))
+                self.database_directory.insert(0, str(Path(file)))
+
+    def select_directory(self, option):
+        directory = filedialog.askdirectory()
+        if directory:
+            if option == "unsorted":
+                self.unsorted_directory.delete(0, len(self.manager.unsorted_dir))
+                self.unsorted_directory.insert(0, str(Path(directory)))
+            elif option == "log":
+                self.log_directory.delete(0, len(self.manager.runlog_dir))
+                self.log_directory.insert(0, str(Path(directory)))
+            elif option == "manual_sort":
+                self.manual_sort_directory.delete(0, len(self.manager.manual_sort_dir))
+                self.manual_sort_directory.insert(0, str(Path(directory)))
+            elif option == "logbook":
+                self.logbook_directory.delete(0, len(self.manager.logbook_dir))
+                self.logbook_directory.insert(0, str(Path(directory)))
+            elif option == "inventory_page":
+                self.inventory_page_directory.delete(0, len(self.manager.inventory_dir))
+                self.inventory_page_directory.insert(0, str(Path(directory)))
+            else:
+                pass
+
+    def save_directories_locations(self):
         data = {
             "unsorted_dir": str(Path(self.unsorted_directory.get())),
             "runlog_dir": str(Path(self.log_directory.get())),
             "manual_sort_dir": str(Path(self.manual_sort_directory.get())),
             "logbook_dir": str(Path(self.logbook_directory.get())),
             "inventory_dir": str(Path(self.inventory_page_directory.get())),
+            "database_dir": str(Path(self.database_directory.get()))
         }
         with open("config.json", "w") as file:
             json.dump(data, file, indent=4)
 
-    def select_directory(self, option):
-        directory = filedialog.askdirectory()
-        if directory:
-            if option == "unsorted":
-                self.unsorted_directory.delete(0, tk.END)
-                self.unsorted_directory.insert(0, str(Path(directory)))
-            elif option == "log":
-                self.log_directory.delete(0, tk.END)
-                self.log_directory.insert(0, str(Path(directory)))
-            elif option == "manual_sort":
-                self.manual_sort_directory.delete(0, tk.END)
-                self.manual_sort_directory.insert(0, str(Path(directory)))
-            elif option == "logbook":
-                self.logbook_directory.delete(0, tk.END)
-                self.logbook_directory.insert(0, str(Path(directory)))
-            elif option == "inventory_page":
-                self.inventory_page_directory.delete(0, tk.END)
-                self.inventory_page_directory.insert(0, str(Path(directory)))
-            else:
-                pass
 
-    def run_process_files(self, path):
+class AboutMenu(ct.CTkFrame):
 
-        self.manager.create_logger()
+    def __init__(self, master):
+        super().__init__(master)
 
-        files = populate_files(path)
-        self.discovery_var.set(f"Discovered {len(files)} Files.")
-        self.progress.set("Running... Processing")
-        processed = 0
+        self.manager = DirectoryManager()
 
-        if files:
-            for file in files:
-                processed += 1
-                self.process_var.set(f"Processing Files... {processed}/{len(files)}")
-                data = ocr_file(file)
-                manufacturer_wrapper(file, data)
+        help_text = """
+                This GUI/project is still a work in progress. Check often for updates.
+                Gui version 1.2.0
 
-        self.progress.set("Running... DONE")
-        self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
+                Feel free to submit feature requests and bug reports.
+                See below for important links"""
 
-    def verify_directories(self):
-        message = ""
-        if not os.path.exists(self.manager.get_unsorted_dir()):
-            message += "Please ensure Unsorted path is correct\n"
-        if not os.path.exists(self.manager.get_runlog_dir()):
-            message += "Please ensure Runtime Log path is correct\n"
-        if not os.path.exists(self.manager.get_manual_sort_dir()):
-            message += "Please ensure Manual Sort path is correct\n"
-        if not os.path.exists(self.manager.get_logbook_dir()):
-            message += "Please ensure Logbook path is correct\n"
-        if not os.path.exists(self.manager.get_inventory_dir()):
-            message += "Please ensure Inventory Page path is correct\n"
+        help_label = ct.CTkLabel(self, text=help_text, justify="center")
+        help_label.grid(row=0, column=1, columnspan=4, sticky='news')
 
-        if message != "":
-            messagebox.showwarning(message)
-            return
+        repo_button = ct.CTkButton(self, text="GitHub Releases", command=lambda: self.open_link(
+            "https://github.com/zachreid-96/digitial_log_book/releases"))
+        readme_button = ct.CTkButton(self, text="README/Setup",
+                                     command=lambda: self.open_link("https://github.com/zachreid-96/digitial_log_book"))
+        issues_button = ct.CTkButton(self, text="Report Issue", command=lambda: self.open_link(
+            "https://github.com/zachreid-96/digitial_log_book/issues"))
+        repo_button.grid(row=1, column=0, columnspan=2)
+        readme_button.grid(row=1, column=2, columnspan=2)
+        issues_button.grid(row=1, column=4, columnspan=2)
 
-        self.verify_button.config(state="disabled")
-        self.start_button.config(state="normal")
-
-        self.verified_var.set("Verified... Success")
+    def open_link(self, link):
+        webbrowser.open(link)
 
 
-if __name__ == '__main__':
+class HelpMenu(ct.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
 
-    root = tk.Tk()
-    app = Log_Book_GUI(root)
-    root.mainloop()
+        self.manager = DirectoryManager()
+
+        self.unsorted_label = ct.CTkLabel(self, text="Pages Ready to Sort:")
+        self.unsorted_label.grid(row=0, column=0, columnspan=3, sticky="e", pady=10)
+
+        self.log_label = ct.CTkLabel(self, text="Runtime Logs:")
+        self.log_label.grid(row=1, column=0, columnspan=3, sticky="e", pady=10)
+
+        self.manual_sort_label = ct.CTkLabel(self, text="Manual Sorting Required:")
+        self.manual_sort_label.grid(row=2, column=0, columnspan=3, sticky="e", pady=10)
+
+        self.logbook_label = ct.CTkLabel(self, text="Used Parts:")
+        self.logbook_label.grid(row=3, column=0, columnspan=3, sticky="e", pady=10)
+
+        self.inventory_page_label = ct.CTkLabel(self, text="Inventory Pages:")
+        self.inventory_page_label.grid(row=4, column=0, columnspan=3, sticky="e", pady=10)
+
+        self.reports_label = ct.CTkLabel(self, text="Reports:")
+        self.reports_label.grid(row=5, column=0, columnspan=3, sticky="e", pady=10)
+
+        self.database_label = ct.CTkLabel(self, text="Database.db:")
+        self.database_label.grid(row=6, column=0, columnspan=3, sticky="e", pady=10)
+
+
+def setup():
+    try:
+        import webbrowser
+    except Exception as e:
+        print("failed webbrowser")
+
+    try:
+        import os
+    except Exception as e:
+        print("failed os")
+
+    try:
+        import tkinter
+    except Exception as e:
+        print("failed tkinter")
+
+    try:
+        import json
+    except Exception as e:
+        print("failed json")
+
+    try:
+        import pathlib
+    except Exception as e:
+        print("failed pathlib")
+
+    try:
+        import threading
+    except Exception as e:
+        print("failed threading")
+
+    try:
+        import glob
+    except Exception as e:
+        print("failed glob")
+
+    try:
+        import shutil
+    except Exception as e:
+        print("failed shutil")
+
+    try:
+        import logging
+    except Exception as e:
+        print("failed logging")
+
+    try:
+        import datetime
+    except Exception as e:
+        print("failed datetime")
+
+    try:
+        import sqlite3
+    except Exception as e:
+        print("failed sqlite3")
+
+    try:
+        import hashlib
+    except Exception as e:
+        print("failed hashlib")
+
+    try:
+        import cv2
+    except Exception as e:
+        print("failed cv2")
+
+    try:
+        import pyzbar.pyzbar
+    except Exception as e:
+        print("failed pyzbar")
+
+    try:
+        import PIL
+    except Exception as e:
+        print("failed PIL")
+
+    try:
+        import fitz
+    except Exception as e:
+        print("failed fitz")
+
+    try:
+        import collections
+    except Exception as e:
+        print("failed collections")
+
+    try:
+        import numpy
+    except Exception as e:
+        print("failed numpy")
+
+    try:
+        import pytesseract
+    except Exception as e:
+        print("failed pytessteract")
+
+    try:
+        import re
+    except Exception as e:
+        print("failed re")
+
+    try:
+        import rapidfuzz
+    except Exception as e:
+        print("failed rapidfuzz")
+
+        #input()
+
+
+if __name__ == "__main__":
+    setup()
+
+    app = Log_Book_GUI()
+    app.mainloop()
