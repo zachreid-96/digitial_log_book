@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 import json
 import os
+import sqlite3
 
 """
 Description: 
@@ -57,18 +58,8 @@ def convert_month_str(int_month):
 """
 Description: 
     This is used to setup and store a lot of commonly used pathing vars
-    
+
 """
-
-#unsorted_path = rf"{manuals_drive}\Digital Log Book\Unsorted"
-#log_path = rf"{manuals_drive}\Digital Log Book\runLogs"
-#manual_sort_path = rf"{manuals_drive}\Digital Log Book\Manual_Sort"
-#logbook_path = rf"{manuals_drive}\Digital Log Book\Logs"
-# inventory_page_path = rf"{manuals_drive}\Digital Log Book\Inventory_Pages"
-#inventory_page_path = rf"{manuals_drive}\Digital Log Book"
-#temp_path = rf"C:\Users\********\DLB_testing\temp"
-
-#logger = setup_logger()
 
 
 class DirectoryManager:
@@ -83,14 +74,21 @@ class DirectoryManager:
             cls._instance.manual_sort_dir = ""
             cls._instance.logbook_dir = ""
             cls._instance.inventory_dir = ""
-            cls._instance.temp_dir = ""
+            cls._instance.database_dir = ""
+            cls._instance.reports_dir = ""
             cls._instance.logger = None
-            cls._instance.load_directories_from_file()
             cls._instance.fails = 0
             cls._instance.successes = 0
+            cls._instance.cursor = None
+            cls._instance.connection = None
+            cls._instance.database_total = 0
+            cls._instance.database_processed = 0
+            cls._instance.setup = 0
+            cls._instance.longest_dir_pixel = 0
+            cls._instance.load_directories_from_file()
         return cls._instance
 
-    def load_directories_from_file(self):
+    def load_directories_from_file(self, recursive=False):
         if os.path.exists(self.CONFIG_FILE):
             try:
                 with open(self.CONFIG_FILE, "r") as file:
@@ -100,15 +98,88 @@ class DirectoryManager:
                     self.manual_sort_dir = data.get("manual_sort_dir")
                     self.logbook_dir = data.get("logbook_dir")
                     self.inventory_dir = data.get("inventory_dir")
-                    self.temp_dir = data.get("temp_dir")
-                self.logger = None
+                    self.database_dir = data.get("database_dir")
+                    self.reports_dir = data.get("reports_dir")
+
+                    print(self.reports_dir)
+
+                if any(filepath == "" for filepath in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir,
+                                                       self.logbook_dir, self.inventory_dir, self.database_dir,
+                                                       self.reports_dir]):
+                    self.setup = 1
+
+                self.logger = self.get_logger()
                 self.fails = 0
                 self.successes = 0
+                self.cursor = None
+                self.connection = None
+
+                for temp_str in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir, self.logbook_dir,
+                                 self.inventory_dir, self.database_dir]:
+                    if len(temp_str) * 8 > self.longest_dir_pixel:
+                        self.longest_dir_pixel = len(temp_str) * 8
+
             except json.JSONDecodeError:
                 if self.logger is not None:
                     self.logger.error("Failed to populate Singleton")
                 else:
                     pass
+        else:
+            if not recursive:
+                with open(self.CONFIG_FILE, "w") as file:
+                    self.load_directories_from_file(True)
+
+    def setup_database(self):
+        database_name = self.database_dir
+        connection = sqlite3.connect(database_name)
+        cursor = connection.cursor()
+
+        machines = """CREATE TABLE MACHINES(
+                            ENTRY_ID INTEGER PRIMARY KEY AUTOINCREMENT, 
+                            BRAND TEXT, 
+                            SERIAL_NUM TEXT, 
+                            DATE TEXT);"""
+
+        parts_used = """CREATE TABLE PARTS_USED(
+                            ENTRY_ID INTEGER,
+                            PART_USED TEXT, 
+                            QUANTITY INTEGER,
+                            FOREIGN KEY (ENTRY_ID) REFERENCES MACHINES(ENTRY_ID));"""
+
+        file_hash = """CREATE TABLE FILE_HASH(
+                            HASH TEXT PRIMARY KEY,
+                            FILE_PATH TEXT,
+                            ENTRY_ID INTEGER,
+                            FOREIGN KEY (ENTRY_ID) REFERENCES MACHINES(ENTRY_ID));"""
+
+        try:
+            cursor.execute(machines)
+        except Exception as e:
+            self.logger.warning(e)
+
+        try:
+            cursor.execute(parts_used)
+        except Exception as e:
+            self.logger.warning(e)
+
+        try:
+            cursor.execute(file_hash)
+        except Exception as e:
+            self.logger.warning(e)
+
+        connection.commit()
+        connection.close()
+
+    def get_database(self):
+        database_name = self.database_dir
+        if self.logger is None:
+            # print('logger is setup')
+            self.create_logger()
+
+        self.setup_database()
+        self.connection = sqlite3.connect(database_name)
+        self.cursor = self.connection.cursor()
+        return self.cursor, self.connection
 
     def updated_fails(self):
         self.fails += 1
@@ -134,8 +205,33 @@ class DirectoryManager:
     def get_inventory_dir(self):
         return self.inventory_dir
 
-    def get_temp_dir(self):
-        return self.temp_dir
+    def get_database_dir(self):
+        return self.database_dir
+
+    def get_reports_dir(self):
+        return self.reports_dir
 
     def get_logger(self):
         return self.logger
+
+    def update_database_total(self, total):
+        self.database_total = total
+
+    def update_database_process(self):
+        self.database_processed += 1
+
+    def is_setup(self):
+        if self.setup == 0:
+            return True
+        return False
+
+    def write_config_file(self, path_dict):
+
+        if not os.path.exists(self.CONFIG_FILE):
+            with open(self.CONFIG_FILE, 'w') as f:
+                pass
+
+        with open(self.CONFIG_FILE, 'w') as f:
+            json.dump(path_dict, f, indent=4, sort_keys=True)
+
+        return
