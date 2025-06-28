@@ -1,0 +1,10 @@
+rapidfuzz
+pytesseract
+numpy
+PyMuPDF
+Pillow
+pyzbar
+opencv-python
+web-browser
+tkinter
+customtkinter
