@@ -1,7 +1,8 @@
 import os
-import shutil
-from config import convert_month_str, DirectoryManager
 import glob
+import shutil
+
+from config import convert_month_str, DirectoryManager
 
 """
 Description: 
@@ -15,32 +16,20 @@ Args:
     file: file to be moved
     serial_number: None if not found || Valid serial number
     date: None if not found || Valid date
-    brand: 'Inventory_Pages', 'Kyocera', 'HP', only ones implemented so far
+    brand: 'Inventory_Pages', 'Kyocera', 'HP', 'Canon'
 """
 
-
-def file_manager_wrapper(file, serial_number, date, brand):
-    path_manager = DirectoryManager()
-    logbook_path = path_manager.get_logbook_dir()
-    inventory_page_path = path_manager.get_inventory_dir()
+def file_manager_wrapper(file, serial_number, date, brand, manual_sort_list=None):
 
     if serial_number is not None and date is not None:
-        destination_folder = rf"{logbook_path}\{brand}\{date.year}\{convert_month_str(date.month)}"
-        os.makedirs(destination_folder, exist_ok=True)
+        move_file_success(file, serial_number, date, brand, manual_sort_list)
 
-        new_filename = f"{date.month}-{date.day}-{date.year}_{serial_number}"
-        move_file_success(file, new_filename, destination_folder)
-
-    elif serial_number is None and brand == "Inventory_Pages" and date is not None:
-        destination_folder = rf"{inventory_page_path}\{date.year}\{convert_month_str(date.month)}"
-        os.makedirs(destination_folder, exist_ok=True)
-
-        new_filename = f"{date.month}-{date.day}-{date.year}_Inventory"
-        move_file_success(file, new_filename, destination_folder)
+    elif brand == "Inventory" and date is not None:
+        move_file_success(file, serial_number, date, brand, manual_sort_list)
 
     elif date is None or serial_number is None:
 
-        move_file_warning(file)
+        move_file_warning(file, serial_number, date, brand, manual_sort_list, multiple=True)
 
 
 """
@@ -51,7 +40,6 @@ Args:
 Returns:
     list of files
 """
-
 
 def populate_files(path):
     files = []
@@ -69,55 +57,75 @@ Description:
     logs operation of move to destination and deletion of file in 'temp_path' and 'unsorted_path'
     if operation fails, calls move_file_warning
 Args:
-    source: original file location
-    filename: strict name of file so some_pdf.pdf would be passed as some_pdf
-    destination: intended location for file
-    extension: defaulted to .pdf but can be changed if something else is passed
-    multiple: defaulted to True, not recommended to be changed    
+    file: file to be moved
+    serial_number: None if not found || Valid serial number
+    date: None if not found || Valid date
+    brand: 'Inventory_Pages', 'Kyocera', 'HP', 'Canon'
+    multiple=True: defaulted to True, not recommended to be changed
+    manual_sort_list=None: multiprocess shared list for data collection on failed files
 """
 
 
-def move_file_success(source, filename, destination, extension='pdf', multiple=True):
+def move_file_success(file, serial_number, date, brand, multiple=True, manual_sort_list=None):
     path_manager = DirectoryManager()
+    logbook_path = path_manager.get_logbook_dir()
+    inventory_page_path = path_manager.get_inventory_dir()
     unsorted_path = path_manager.get_unsorted_dir()
     logger = path_manager.get_logger()
 
+    destination_folder = None
+    new_filename = None
+
+    if serial_number is not None and date is not None:
+        destination_folder = rf"{logbook_path}\{brand}\{date.year}\{convert_month_str(date.month)}"
+        os.makedirs(destination_folder, exist_ok=True)
+
+        new_filename = f"{date.month}-{date.day}-{date.year}_{serial_number}"
+
+    elif brand == "Inventory" and date is not None:
+        destination_folder = rf"{inventory_page_path}\{date.year}\{convert_month_str(date.month)}"
+        os.makedirs(destination_folder, exist_ok=True)
+
+        new_filename = f"{date.month}-{date.day}-{date.year}_Inventory"
+
+    if destination_folder is None and new_filename is None:
+        move_file_warning(file, serial_number, date, brand, manual_sort_list, multiple=True)
+
     try:
         if multiple:
-            if not os.path.exists(os.path.join(destination, f"{filename}.{extension}")):
-                shutil.move(source, os.path.join(destination, f"{filename}.{extension}"))
+            if not os.path.exists(os.path.join(destination_folder, f"{new_filename}.pdf")):
+                shutil.move(file, os.path.join(destination_folder, f"{new_filename}.pdf"))
 
-                message = f"""RENAMED {source.split("\\")[-1]} to {filename}.{extension}
-                        \t MOVED {filename}.{extension} to {destination}
-                        \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
+                message = f"""RENAMED {file.split("\\")[-1]} to {new_filename}.pdf
+                        \t MOVED {new_filename}.pdf to {destination_folder}
+                        \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                 logger.info(message)
             else:
                 count = 1
                 while True:
-                    if not os.path.exists(os.path.join(destination, f"{filename}_{count}.{extension}")):
-                        shutil.move(source, os.path.join(destination, f"{filename}_{count}.{extension}"))
+                    if not os.path.exists(os.path.join(destination_folder, f"{new_filename}_{count}.pdf")):
+                        shutil.move(file, os.path.join(destination_folder, f"{new_filename}_{count}.pdf"))
 
-                        message = f"""RENAMED {source.split("\\")[-1]} to {filename}_{count}.{extension}
-                                            \t MOVED {filename}.{extension}_{count} to {destination}
-                                            \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
+                        message = f"""RENAMED {file.split("\\")[-1]} to {new_filename}_{count}.pdf
+                                            \t MOVED {new_filename}.pdf_{count} to {destination_folder}
+                                            \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                         logger.info(message)
                         break
                     count += 1
         if not multiple:
-            if not os.path.exists(os.path.join(destination, f"{filename}.{extension}")):
-                shutil.move(source, os.path.join(destination, f"{filename}.{extension}"))
+            if not os.path.exists(os.path.join(destination_folder, f"{new_filename}.pdf")):
+                shutil.move(file, os.path.join(destination_folder, f"{new_filename}.pdf"))
 
-                message = f"""RENAMED {source.split("\\")[-1]} to {filename}.{extension}
-                        \t MOVED {filename}.{extension} to {destination}
-                        \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
+                message = f"""RENAMED {file.split("\\")[-1]} to {new_filename}.pdf
+                        \t MOVED {new_filename}.pdf to {destination_folder}
+                        \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                 logger.info(message)
-        path_manager.update_successes()
     except Exception as e:
         logger.warning(e)
-        move_file_warning(source)
+        move_file_warning(file, serial_number, date, brand, manual_sort_list, multiple=True)
 
 
 """
@@ -127,50 +135,61 @@ Description:
     will check if file_name already exists and renames to file_name_x (x=1,2,3,etc) and rechecks
     logs operation of move to destination and deletion of file in 'temp_path' and 'unsorted_path'
 Args:
-    source: original file location
-    filename: strict name of file so some_pdf.pdf would be passed as some_pdf
-    destination: intended location for file
-    extension: defaulted to .pdf but can be changed if something else is passed
-    multiple: defaulted to True, not recommended to be changed    
+    file: file to be moved
+    serial_number: None if not found || Valid serial number
+    date: None if not found || Valid date
+    brand: 'Inventory_Pages', 'Kyocera', 'HP', 'Canon'
+    multiple=True: defaulted to True, not recommended to be changed
+    manual_sort_list=None: multiprocess shared list for data collection on failed files 
 """
 
 
-def move_file_warning(source, extension='pdf', multiple=True):
+def move_file_warning(file, serial_number, date, brand, manual_sort_list, multiple=True):
     path_manager = DirectoryManager()
     unsorted_path = path_manager.get_unsorted_dir()
     manual_sort_path = path_manager.get_manual_sort_dir()
     logger = path_manager.get_logger()
 
-    path_manager.updated_fails()
+    logged_filename = ''
 
-    original_filename = source.split("\\")[-1][:-4]
+    original_filename = file.split("\\")[-1][:-4]
     if multiple:
-        if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}.{extension}")):
-            shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}.{extension}"))
+        if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}.pdf")):
+            shutil.move(file, os.path.join(manual_sort_path, f"{original_filename}.pdf"))
 
             message = f"""UNABLE to parse DATE in document
-                        \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                        \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
+                        \t MOVED {original_filename}.pdf to {manual_sort_path}
+                        \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
             logger.error(message)
+            logged_filename = os.path.join(manual_sort_path, f"{original_filename}.pdf")
         else:
             count = 1
             while True:
-                if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}_{count}.{extension}")):
-                    shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}_{count}.{extension}"))
+                if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}_{count}.pdf")):
+                    shutil.move(file, os.path.join(manual_sort_path, f"{original_filename}_{count}.pdf"))
 
                     message = f"""UNABLE to parse DATE in document
-                                \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                                \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
+                                \t MOVED {original_filename}.pdf to {manual_sort_path}
+                                \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                     logger.error(message)
                     break
                 count += 1
+                logged_filename = os.path.join(manual_sort_path, f"{original_filename}_{count}.pdf")
     if not multiple:
-        if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}.{extension}")):
-            shutil.move(source, os.path.join(manual_sort_path, f"{original_filename}.{extension}"))
+        if not os.path.exists(os.path.join(manual_sort_path, f"{original_filename}.pdf")):
+            shutil.move(file, os.path.join(manual_sort_path, f"{original_filename}.pdf"))
 
             message = f"""UNABLE to parse DATE in document
-                        \t MOVED {original_filename}.{extension} to {manual_sort_path}
-                        \t DELETED {source.split("\\")[-1]} in {unsorted_path}"""
+                        \t MOVED {original_filename}.pdf to {manual_sort_path}
+                        \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
             logger.error(message)
+            logged_filename = os.path.join(manual_sort_path, f"{original_filename}.pdf")
+
+    manual_sort_list.append({
+        'file': logged_filename,
+        'serial_num': serial_number,
+        'date': date.strftime('%Y/%m/%d') if date else None,
+        'brand': brand
+    })

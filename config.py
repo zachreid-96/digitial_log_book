@@ -1,8 +1,9 @@
-import logging
-from datetime import datetime
-import json
 import os
+import json
+import logging
 import sqlite3
+
+from datetime import datetime
 
 """
 Description: 
@@ -10,12 +11,11 @@ Description:
     will used a specified log output path to store the log file once completed
 """
 
-
 def setup_logger():
     path_manager = DirectoryManager()
     log_path = path_manager.get_runlog_dir()
 
-    log_filename = datetime.now().strftime(rf"{log_path}\%m-%d-%Y_runtime.log")
+    log_filename = datetime.now().strftime(rf"{log_path}\%Y-%m-%d_runtime.log")
 
     logging.basicConfig(
         level=logging.INFO,
@@ -37,7 +37,6 @@ Returns:
     returns 2-February for 2 in 2/15/2024
 """
 
-
 def convert_month_str(int_month):
     months = {1: "January",
               2: "February",
@@ -56,15 +55,14 @@ def convert_month_str(int_month):
 
 
 """
-Description: 
-    This is used to setup and store a lot of commonly used pathing vars
+Description:     
+    Acts as a shared Singleton object, sharing pathing, common vars, logging, ect
 
 """
 
-
 class DirectoryManager:
     _instance = None
-    CONFIG_FILE = "config.json"
+    CONFIG_FILE = "config_testing.json"
 
     def __new__(cls):
         if cls._instance is None:
@@ -76,9 +74,8 @@ class DirectoryManager:
             cls._instance.inventory_dir = ""
             cls._instance.database_dir = ""
             cls._instance.reports_dir = ""
+            cls._instance.manual_json = ""
             cls._instance.logger = None
-            cls._instance.fails = 0
-            cls._instance.successes = 0
             cls._instance.cursor = None
             cls._instance.connection = None
             cls._instance.database_total = 0
@@ -100,17 +97,14 @@ class DirectoryManager:
                     self.inventory_dir = data.get("inventory_dir")
                     self.database_dir = data.get("database_dir")
                     self.reports_dir = data.get("reports_dir")
-
-                    print(self.reports_dir)
+                    self.manual_json = data.get("manual_json")
 
                 if any(filepath == "" for filepath in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir,
                                                        self.logbook_dir, self.inventory_dir, self.database_dir,
-                                                       self.reports_dir]):
+                                                       self.reports_dir, self.manual_json]):
                     self.setup = 1
 
                 self.logger = self.get_logger()
-                self.fails = 0
-                self.successes = 0
                 self.cursor = None
                 self.connection = None
 
@@ -138,7 +132,7 @@ class DirectoryManager:
                             ENTRY_ID INTEGER PRIMARY KEY AUTOINCREMENT, 
                             BRAND TEXT, 
                             SERIAL_NUM TEXT, 
-                            DATE TEXT);"""
+                            DATE DATE);"""
 
         parts_used = """CREATE TABLE PARTS_USED(
                             ENTRY_ID INTEGER,
@@ -147,7 +141,7 @@ class DirectoryManager:
                             FOREIGN KEY (ENTRY_ID) REFERENCES MACHINES(ENTRY_ID));"""
 
         file_hash = """CREATE TABLE FILE_HASH(
-                            HASH TEXT PRIMARY KEY,
+                            STEM TEXT PRIMARY KEY,
                             FILE_PATH TEXT,
                             ENTRY_ID INTEGER,
                             FOREIGN KEY (ENTRY_ID) REFERENCES MACHINES(ENTRY_ID));"""
@@ -181,12 +175,6 @@ class DirectoryManager:
         self.cursor = self.connection.cursor()
         return self.cursor, self.connection
 
-    def updated_fails(self):
-        self.fails += 1
-
-    def update_successes(self):
-        self.successes += 1
-
     def create_logger(self):
         self.logger = setup_logger()
 
@@ -211,14 +199,15 @@ class DirectoryManager:
     def get_reports_dir(self):
         return self.reports_dir
 
+    def get_manual_json(self):
+        return self.manual_json
+
     def get_logger(self):
+
+        if self.logger is None:
+            self.logger = setup_logger()
+
         return self.logger
-
-    def update_database_total(self, total):
-        self.database_total = total
-
-    def update_database_process(self):
-        self.database_processed += 1
 
     def is_setup(self):
         if self.setup == 0:

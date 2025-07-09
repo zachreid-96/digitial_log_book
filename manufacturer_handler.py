@@ -1,37 +1,66 @@
 import re
-from datetime import datetime
-from pdfminer.high_level import extract_text
-from file_manager import file_manager_wrapper
+
 from rapidfuzz import fuzz
+from datetime import datetime
+from ocr_processor import ocr_file
+from file_manager import file_manager_wrapper
 
-"""
-Description: 
-    extracts data from the passed file and splits it by " "
-Args:
-    file: passed from anywhere where file data is needed
-Returns:
-    returns string array of data
-"""
+def clean_ocr_date_string(raw_str):
+    return re.sub(r'(?<=\d)7(?=\d)', '/', raw_str)
 
+def normalize_date(date_str):
 
-def get_data(file):
-    try:
-        data_raw = extract_text(file).upper()
-        data = data_raw.split(" ")
-    except Exception as e:
-        data = None
-    return data
+    date_str = clean_ocr_date_string(date_str)
+    match = re.match(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', date_str)
+    if match:
+        m, d, y = match.groups()
+        return f"{int(m):02d}/{int(d):02d}/{y}"
 
+    match_year_first = re.match(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', date_str)
+    if match_year_first:
+        y, m, d = match_year_first.groups()
+        return f"{int(m):02d}/{int(d):02d}/{y}"
+
+    match_short_year = re.match(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2})', date_str)
+    if match_short_year:
+        m, d, y = match_short_year.groups()
+        return f"{int(m):02d}/{int(d):02d}/20{y}"
+
+    return None
+
+def normalize_kyocera_serials(serial):
+
+    removable_chars = ['¥']
+    serial_arr = [char for char in serial if char not in removable_chars]
+
+    if serial[:2] == "19":
+        serial_arr[2] = "Z"
+
+    normalized_serial = "".join(serial_arr)
+
+    return normalized_serial
 
 def fuzzy_subset(subset, data, threshold=80):
+
     match_count = 0
-    for item in subset:
+    confidence_target = len(subset) // 2
+    for item, val in subset.items():
+        if match_count > confidence_target:
+            break
         for data_item in data:
             if fuzz.ratio(item.lower(), data_item.lower()) >= threshold:
-                match_count += 1
+                match_count += val
                 break
-    return match_count >= (len(subset) // 2)
 
+    #with open('testing.txt', 'a', encoding="utf-8", errors="replace") as f:
+    #    f.write(f"{match_count} || {(len(subset) // 2)}")
+    return match_count > (len(subset) // 2)
+
+
+def manufacturer_multi(files, manual_sort_list):
+    for file in files:
+        data = ocr_file(file)
+        manufacturer_wrapper(file, data, manual_sort_list)
 
 """
 Description: 
@@ -42,29 +71,30 @@ Args:
 """
 
 
-def manufacturer_wrapper(file, data):
-    inventory_subset = {"SERVICE", "INVENTORY", "PICKING", "LIST"}
-    kyocera_subset = {"KYOCERA", "STATUS", "PAGE"}
-    hp_subset = {"HP", "USAGE", "PAGE", "TOTALS"}
-    canon_subset = {"CR", "SN", "CCD", "DID"}
+def manufacturer_wrapper(file, data, manual_sort_list=None):
+    inventory_subset = {
+        "SERVICE": 1, "INVENTORY": 3, "PICKING": 2, "LIST": 1,
+        "PRINTED": 1, "STOCK": 3, "SIGNATURE": 4, "PACKING": 2}
+    kyocera_subset = {"KYOCERA": 3, "STATUS": 2, "KPDL": 3, "FIRMWARE": 2, "VERSION": 2}
+    hp_subset = {"HP": 3, "USAGE": 3, "PAGE": 1, "TOTALS": 1,
+                 "DEVICE": 1, "INFORMATION": 2, "CONFIGURATION": 3, "LaserJet": 4}
+    canon_subset = {"COUNTER": 2, "REPORT": 2, "DEVICE": 1, "INSTALLATION": 3, "DATE": 1}
 
     match_threshhold = 80
 
-    data = data.split()
-
     if data is None:
-        file_manager_wrapper(file, None, None, None)
+        file_manager_wrapper(file=file, serial_number=None, date=None, brand=None, manual_sort_list=manual_sort_list)
 
     if fuzzy_subset(inventory_subset, data, match_threshhold):
-        parse_inventory(file, data)
+        parse_inventory(file, data, manual_sort_list)
     elif fuzzy_subset(kyocera_subset, data, match_threshhold):
-        parse_kyocera(file, data)
+        parse_kyocera(file, data, manual_sort_list)
     elif fuzzy_subset(hp_subset, data, match_threshhold):
-        parse_hp(file, data)
+        parse_hp(file, data, manual_sort_list)
     elif fuzzy_subset(canon_subset, data, match_threshhold):
-        parse_canon(file, data)
+        parse_canon(file, data, manual_sort_list)
     else:
-        file_manager_wrapper(file, None, None, None)
+        file_manager_wrapper(file=file, serial_number=None, date=None, brand=None, manual_sort_list=manual_sort_list)
 
 
 """
@@ -78,19 +108,19 @@ Args:
 """
 
 
-def parse_inventory(file, data):
+def parse_inventory(file, data, manual_sort_list=None):
     date = None
 
-    for entry in data:
+    for temp in data:
         if date is not None:
             break
-        elif 8 <= len(entry.strip()) <= 10 and date is None:
+        elif date is None:
             try:
-                date = datetime.strptime(entry.strip(), '%m/%d/%Y')
-            except ValueError:
-                continue
+                date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+            except Exception:
+                pass
 
-    file_manager_wrapper(file, None, date, "Inventory_Pages")
+    file_manager_wrapper(file=file, serial_number=None, date=date, brand='Inventory', manual_sort_list=manual_sort_list)
 
 
 """
@@ -105,7 +135,7 @@ Args:
 """
 
 
-def parse_kyocera(file, data):
+def parse_kyocera(file, data, manual_sort_list=None):
     date = None
     serial_number = None
 
@@ -114,19 +144,27 @@ def parse_kyocera(file, data):
 
     for entry in data:
         temp = entry.strip()
-        if (any(char.isdigit() for char in temp)
-                and any(char.isalpha() for char in temp)
-                and not any(char in excluded_chars for char in temp)
-                and len(temp) == 10 and not temp.endswith(excluded_phrase)):
-            if not temp[:3].isnumeric() and serial_number is None:
-                serial_number = temp
-        elif len(temp) == 10 and date is None:
-            try:
-                date = datetime.strptime(temp, '%m/%d/%Y')
-            except ValueError:
-                continue
+        if len(temp) >= 10:
 
-    file_manager_wrapper(file, serial_number, date, 'Kyocera')
+            temp_normalized = normalize_kyocera_serials(temp)
+
+            if (any(char.isdigit() for char in temp_normalized)
+                    and any(char.isalpha() for char in temp_normalized)
+                    and not any(char in excluded_chars for char in temp_normalized)):
+
+                if not temp_normalized[:3].isnumeric() and serial_number is None:
+                    serial_number = temp_normalized
+
+        if date is None:
+            try:
+                date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+            except Exception:
+                pass
+
+        if date is not None and serial_number is not None:
+            break
+
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date, brand='Kyocera', manual_sort_list=manual_sort_list)
 
 
 """
@@ -141,42 +179,49 @@ Args:
 """
 
 
-def parse_hp(file, data):
+def parse_hp(file, data, manual_sort_list=None):
     date = None
     serial_number = None
     serial_number_pattern = re.compile(r'\b[a-z0-9]{10}\b', re.IGNORECASE)
 
-    # data = get_data(file)
+    excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
+    excluded_phrase = ("dpi", "dpl", "dp1")
 
     for entry in data:
         temp = entry.strip()
-        if len(temp) == 10 and serial_number is None:
-            serial_number = serial_number_pattern.search(temp)
-        if len(temp) == 10 and date is None:
+        if (any(char.isdigit() for char in temp)
+                and any(char.isalpha() for char in temp)
+                and not any(char in excluded_chars for char in temp)
+                and len(temp) == 10 and not temp.endswith(excluded_phrase)):
+            serial_number = temp
+        if date is None:
             try:
-                date = datetime.strptime(temp, '%m/%d/%Y')
-            except ValueError:
-                continue
+                date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+            except Exception:
+                pass
 
-    file_manager_wrapper(file, serial_number, date, 'HP')
+        if date is not None and serial_number is not None:
+            break
+
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date, brand='HP', manual_sort_list=manual_sort_list)
 
 
-def parse_canon(file, data):
+def parse_canon(file, data, manual_sort_list=None):
     date = None
     serial_number = None
-    has_seen_sn_tag = False
 
     for entry in data:
         temp = entry.strip()
-        if temp == "SN":
-            has_seen_sn_tag = True
         if (serial_number is None and any(char.isdigit() for char in temp)
-                and any(char.isalpha() for char in temp) and len(temp) == 8 and has_seen_sn_tag):
+                and any(char.isalpha() for char in temp) and len(temp) == 8):
             serial_number = temp
-        elif '/' in temp:
+        if date is None:
             try:
-                date = datetime.strptime(temp[:10], '%m/%d/%Y')
-            except ValueError:
-                continue
+                date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+            except Exception:
+                pass
 
-    file_manager_wrapper(file, serial_number, date, 'Canon')
+        if date is not None and serial_number is not None:
+            break
+
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date, brand='Canon', manual_sort_list=manual_sort_list)

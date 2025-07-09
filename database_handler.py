@@ -1,14 +1,15 @@
 import os
-import hashlib
 import cv2
+import fitz
+import hashlib
+
+import numpy as np
+
+from pathlib import Path
 from pyzbar.pyzbar import decode
 from PIL import Image, ImageFilter
-import fitz
-import numpy as np
 from config import DirectoryManager
-from pathlib import Path
 from collections import Counter, defaultdict
-
 
 def resize_image(image, scale_factor=1.5):
     width, height = image.size
@@ -18,8 +19,19 @@ def resize_image(image, scale_factor=1.5):
     image = image.filter(ImageFilter.MedianFilter(size=3))
     return image
 
+"""
+Description: 
+    Wrapper function for multiprocessing to call extract_barcode_cv2
+Args:
+    files: list of files designated for current process
+    barcode_list=None: a multiprocessing shared list for aid in speeding up barcode data extraction and processing
+"""
 
-def extract_barcode_cv2(file):
+def barcode_wrapper(files, barcode_list=None):
+    for file in files:
+        extract_barcode_cv2(file, barcode_list)
+
+def extract_barcode_cv2(file, barcode_list=None):
     dpi = 300
     pages = fitz.open(file)
     page = pages[0]
@@ -50,7 +62,7 @@ def extract_barcode_cv2(file):
         # Get the rotated bounding box
         rect = cv2.minAreaRect(contour)
         box = cv2.boxPoints(rect)
-        box = np.intp(box)  # Convert to int
+        box = np.intp(box)
 
         # Get width, height, and angle
         (x, y), (w, h), angle = rect
@@ -85,7 +97,7 @@ def extract_barcode_cv2(file):
                 try:
                     cropped_image = resize_image(cropped_image)
                     decoded_object = decode(cropped_image)
-                    cropped_image.show()
+                    #cropped_image.show()
                     if len(decoded_object) == 1:
                         for obj in decoded_object:
                             data = obj.data.decode('utf-8')
@@ -94,7 +106,11 @@ def extract_barcode_cv2(file):
                     continue
 
     parts_tuple = [(part, count) for part, count in Counter(barcode_data).items()]
-    return parts_tuple
+
+    barcode_list.append({
+        'file': file,
+        'parts_data': parts_tuple
+    })
 
 
 def generate_hash(file):
@@ -108,7 +124,7 @@ def check_hash_exists(file_hash):
     path_manager = DirectoryManager()
     cursor, connection = path_manager.get_database()
 
-    cursor.execute('SELECT FILE_PATH FROM FILE_HASH WHERE HASH = ?', (file_hash,))
+    cursor.execute('SELECT FILE_PATH FROM FILE_HASH WHERE STEM = ?', (file_hash,))
     result = cursor.fetchone()
 
     cursor.close()
@@ -116,7 +132,7 @@ def check_hash_exists(file_hash):
     return result
 
 
-def write_to_database(file, file_hash):
+def write_to_database(file, stem, barcode_data):
     path_manager = DirectoryManager()
     cursor, connection = path_manager.get_database()
 
@@ -127,8 +143,7 @@ def write_to_database(file, file_hash):
     date = file_name_parts[0]
     brand = Path(file).parts[-4]
 
-    barcode_data = extract_barcode_cv2(file)
-
+    # For stem formats that follow '5-17-2025_19Z0234561.pdf'
     if len(file_name_parts) == 2:
 
         if barcode_data:
@@ -141,17 +156,14 @@ def write_to_database(file, file_hash):
                 cursor.execute('INSERT INTO PARTS_USED (ENTRY_ID, PART_USED, QUANTITY) VALUES (?, ?, ?)',
                                (machine_id, part_num, quantity))
 
-            cursor.execute('INSERT INTO FILE_HASH (HASH, FILE_PATH, ENTRY_ID) VALUES (?, ?, ?)',
-                           (file_hash, file, machine_id))
+            cursor.execute('INSERT INTO FILE_HASH (STEM, FILE_PATH, ENTRY_ID) VALUES (?, ?, ?)',
+                           (stem, file, machine_id))
 
             connection.commit()
             cursor.close()
             connection.close()
 
-        else:
-            print("failed to get barcode data vvv")
-            print(file)
-
+    # For stem formats that follow '5-17-2025_19Z0234561_2.pdf'
     if len(file_name_parts) == 3:
 
         if barcode_data:
@@ -181,8 +193,8 @@ def write_to_database(file, file_hash):
                         cursor.execute('''INSERT INTO PARTS_USED (ENTRY_ID, PART_USED, QUANTITY)
                             VALUES (?, ?, ?)''', (entry_id[0], part, quantity))
 
-                cursor.execute('INSERT INTO FILE_HASH (HASH, FILE_PATH, ENTRY_ID) VALUES (?, ?, ?)',
-                               (file_hash, file, entry_id[0]))
+                cursor.execute('INSERT INTO FILE_HASH (STEM, FILE_PATH, ENTRY_ID) VALUES (?, ?, ?)',
+                               (stem, file, entry_id[0]))
 
             if entry_id is None:
                 cursor.execute('INSERT INTO MACHINES (BRAND, SERIAL_NUM, DATE) VALUES (?, ?, ?)',
@@ -193,19 +205,19 @@ def write_to_database(file, file_hash):
                     cursor.execute('INSERT INTO PARTS_USED (ENTRY_ID, PART_USED, QUANTITY) VALUES (?, ?, ?)',
                                    (machine_id, part_num, quantity))
 
-                cursor.execute('INSERT INTO FILE_HASH (HASH, FILE_PATH, ENTRY_ID) VALUES (?, ?, ?)',
-                               (file_hash, file, machine_id))
+                cursor.execute('INSERT INTO FILE_HASH (STEM, FILE_PATH, ENTRY_ID) VALUES (?, ?, ?)',
+                               (stem, file, machine_id))
 
             connection.commit()
             cursor.close()
             connection.close()
 
 
-def database_add_files(file):
+def database_add_files(file, barcode_data):
     file_name = Path(file).stem
-    file_hash = generate_hash(file_name)
+    #file_hash = generate_hash(file_name)
 
     # Write Data to Database
-    if not check_hash_exists(file_hash):
-        write_to_database(file, file_hash)
+    if barcode_data:
+        write_to_database(file, file_name, barcode_data)
 

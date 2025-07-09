@@ -1,19 +1,25 @@
-import webbrowser
-from config import DirectoryManager
-from database_handler import database_add_files
-from ocr_processor import ocr_file
-from manufacturer_handler import manufacturer_wrapper
-from file_manager import populate_files
 import os
-import tkinter as tk
-from tkinter import filedialog
-import json
-from pathlib import Path
-import threading
+import csv
 import glob
-import customtkinter as ct
-from datetime import datetime
+import json
+import time
+import threading
+import webbrowser
 
+import tkinter as tk
+import customtkinter as ct
+
+from pdf_viewer import PDFViewer
+from config import DirectoryManager
+from file_manager import populate_files
+from manufacturer_handler import manufacturer_multi
+from database_handler import database_add_files, barcode_wrapper
+
+from pathlib import Path
+from datetime import datetime
+from tkinter import filedialog
+from dateutil.relativedelta import relativedelta
+from multiprocessing import Pool, Manager, set_start_method
 
 class Log_Book_GUI(ct.CTk):
     def __init__(self):
@@ -33,7 +39,7 @@ class Log_Book_GUI(ct.CTk):
 
         self.sidebar_frame = ct.CTkFrame(self, width=140, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, rowspan=4, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(6, weight=1)
+        self.sidebar_frame.grid_rowconfigure(7, weight=1)
 
         self.separator = ct.CTkFrame(self, fg_color="black", width=5)
         self.separator.grid(row=0, column=1, rowspan=4, sticky="ns")
@@ -54,17 +60,21 @@ class Log_Book_GUI(ct.CTk):
                                             command=self.show_database_menu)
         self.Database_button.grid(row=2, column=0, padx=20, pady=10)
 
+        self.Manual_button = ct.CTkButton(self.sidebar_frame, text="Manual Sort",
+                                            command=self.show_manual_menu)
+        self.Manual_button.grid(row=3, column=0, padx=20, pady=10)
+
         self.Settings_button = ct.CTkButton(self.sidebar_frame, text="Settings",
                                             command=self.show_settings_menu)
-        self.Settings_button.grid(row=3, column=0, padx=20, pady=10)
+        self.Settings_button.grid(row=4, column=0, padx=20, pady=10)
 
         self.Help_button = ct.CTkButton(self.sidebar_frame, text="Help",
                                         command=self.show_help_menu)
-        self.Help_button.grid(row=4, column=0, padx=20, pady=10)
+        self.Help_button.grid(row=5, column=0, padx=20, pady=10)
 
         self.About_button = ct.CTkButton(self.sidebar_frame, text="About",
                                          command=self.show_about_menu)
-        self.About_button.grid(row=5, column=0, padx=20, pady=10)
+        self.About_button.grid(row=6, column=0, padx=20, pady=10)
 
         self.current_view = None
 
@@ -81,6 +91,7 @@ class Log_Book_GUI(ct.CTk):
         new_scaling_float = int(new_scaling.replace("%", "")) / 100
         ct.set_widget_scaling(new_scaling_float)
 
+    # Switches Frame to the selected one
     def _switch_view(self, view_class):
         if self.current_view:
             self.current_view.destroy()
@@ -94,6 +105,9 @@ class Log_Book_GUI(ct.CTk):
     def show_database_menu(self):
         self._switch_view(DatabaseMenu)
 
+    def show_manual_menu(self):
+        self._switch_view(PDFViewer)
+
     def show_settings_menu(self):
         self._switch_view(SettingsMenu)
 
@@ -103,6 +117,10 @@ class Log_Book_GUI(ct.CTk):
     def show_about_menu(self):
         self._switch_view(AboutMenu)
 
+    """
+    Description: 
+        Sets up the designated folder structure without user input or worry about what is needed
+    """
     def setup_project(self):
 
         pathing = os.path.join(os.environ['USERPROFILE'], 'Parts_Log')
@@ -117,15 +135,19 @@ class Log_Book_GUI(ct.CTk):
         used_parts = os.path.join(pathing, 'Used Parts Logs')
         reports = os.path.join(pathing, 'Reports')
 
+        # Cretes all needed folders if not already created
         for folder in [manual_sort, runtime_logs, ready_sort, inventory_pages, used_parts, reports]:
             if not os.path.exists(folder):
                 os.mkdir(folder)
 
         database_file = os.path.join(pathing, 'Used Parts Database.db')
+        manual_json = os.path.join(pathing, 'manual_sort.json')
 
-        if not os.path.exists(database_file):
-            with open(database_file, 'w') as f:
-                pass
+        # Creates all needed files, if not already created
+        for file in [database_file, manual_json]:
+            if not os.path.exists(file):
+                with open(file, 'w') as f:
+                    pass
 
         json_dict = {
             'unsorted_dir': ready_sort,
@@ -134,7 +156,8 @@ class Log_Book_GUI(ct.CTk):
             'logbook_dir': used_parts,
             'inventory_dir': inventory_pages,
             'database_dir': database_file,
-            'reports_dir': reports
+            'reports_dir': reports,
+            'manual_json': manual_json
         }
 
         self.manager.write_config_file(json_dict)
@@ -172,8 +195,8 @@ class ProcessMenu(ct.CTkFrame):
         self.inventory_page_directory = ct.CTkLabel(self, text=self.manager.get_inventory_dir())
         self.inventory_page_directory.grid(row=4, column=3, columnspan=4, sticky="w", padx=25, pady=10)
 
-        self.start_button = ct.CTkButton(self, text="Start Process")
-        #                                 command=self.run_process_files)
+        self.start_button = ct.CTkButton(self, text="Start Process",
+                                         command=self.run_process_multi)
         self.start_button.grid(row=5, column=0, sticky="w", padx=25, pady=10, columnspan=3)
         self.start_button.configure(state="normal")
 
@@ -189,20 +212,15 @@ class ProcessMenu(ct.CTkFrame):
         self.success_label.grid(row=6, column=0, columnspan=3, sticky="w", padx=25, pady=10)
         self.fail_label.grid(row=6, column=2, columnspan=3, sticky="w", padx=25, pady=10)
 
-    def run_process_files(self):
+    def run_process_multi(self):
 
-        thread = threading.Thread(target=self.thread_process)
+        thread = threading.Thread(target=self.thread_multi)
         thread.start()
 
-    def sort_key(self, file):
-        name = Path(file).stem.split('_')
+    def thread_multi(self):
 
-        if len(name) == 3:
-            return 1, name
-        elif len(name) == 2:
-            return 0, name
-
-    def thread_process(self):
+        start = time.perf_counter()
+        print(f"Start: {start}")
 
         self.manager.create_logger()
 
@@ -211,25 +229,83 @@ class ProcessMenu(ct.CTkFrame):
         files = populate_files(path)
         self.progress.set("Status... EXTRACTING DATA FROM LOGS")
 
-        if files:
-            for file in files:
-                data = ocr_file(file)
-                manufacturer_wrapper(file, data)
+        try:
+            set_start_method('spawn', force=True)
+        except RuntimeError:
+            pass
 
-        self.progress.set("Status... ADDING DATA TO DATABASE")
-        self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
+        cpu_count = max(1, os.cpu_count() // 2)
 
-        # Get files
-        files = []
-        for file in glob.glob(str(Path(self.manager.get_logbook_dir()).resolve() / '**' / '*.pdf'), recursive=True):
-            files.append(file)
+        process_chunks = [files[i::cpu_count] for i in range(cpu_count)]
+        with Manager() as manager:
+            manual_sort_list = manager.list()
+            process_args = [(chunk, manual_sort_list) for chunk in process_chunks]
+            with Pool(processes=cpu_count) as pool:
+               pool.starmap(manufacturer_multi, process_args)
 
-        files_sorted = sorted(files, key=self.sort_key)
+            self.progress.set("Status... ADDING DATA TO DATABASE")
+            self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
 
-        for file in files_sorted:
-            database_add_files(file)
+            # Get files
+            cursor, connection = self.manager.get_database()
+            cursor.execute('SELECT STEM FROM FILE_HASH')
+            processed_stems = cursor.fetchall()
 
+            files = []
+            for file in glob.glob(str(Path(self.manager.get_logbook_dir()).resolve() / '**' / '*.pdf'), recursive=True):
+                stem = Path(file).stem
+                if stem not in processed_stems:
+                    files.append(file)
+
+            files_sorted = sorted(files, key=self.sort_key)
+            barcode_list = manager.list()
+            barcode_chunks = [files_sorted[i::cpu_count] for i in range(cpu_count)]
+            barcode_args = [(chunk, barcode_list) for chunk in barcode_chunks]
+
+            with Pool(processes=cpu_count) as pool:
+                pool.starmap(barcode_wrapper, barcode_args)
+
+            for entry in barcode_list:
+
+                if not entry['parts_data']:
+                    file_name_parts = Path(entry).stem.split('_')
+
+                    brand = None
+                    if 'Kyocera' in entry['file']:
+                        brand = 'Kyocera'
+                    elif 'HP' in entry['file']:
+                        brand = 'HP'
+                    elif 'Canon' in entry['file']:
+                        brand = 'Canon'
+                    elif 'Konica' in entry['file']:
+                        brand = 'Konica'
+
+                    manual_sort_list.append({
+                        'file': entry['file'],
+                        'serial_num': file_name_parts[1],
+                        'date': file_name_parts[0],
+                        'brand': brand,
+                        'parts': None
+                    })
+                else:
+                    database_add_files(entry['file'], entry['parts_data'])
+
+            with open(self.manager.get_manual_json(), 'w') as manual_json:
+                json.dump(list(manual_sort_list), manual_json, indent=4)
+
+        end = time.perf_counter()
         self.progress.set("Status... DONE")
+
+        print(f"End: {end}\n")
+        print(f"Execution on {len(files)} files took {end - start:.2f} seconds.")
+
+    def sort_key(self, file):
+        name = Path(file).stem.split('_')
+
+        if len(name) == 3:
+            return 1, name
+        elif len(name) == 2:
+            return 0, name
 
 
 class DatabaseMenu(ct.CTkFrame):
@@ -244,43 +320,32 @@ class DatabaseMenu(ct.CTkFrame):
         self.report_label.grid(row=0, column=0, padx=20, pady=(20, 10), columnspan=4, sticky='news')
 
         self.open_reports = ct.CTkButton(self, text="Open Reports",
-                                                  command=self.open_report_folder)
+                                         command=self.open_report_folder)
         self.open_reports.grid(row=3, column=0, padx=20, pady=10, columnspan=2, sticky='news')
 
         self.report_month_1 = ct.CTkButton(self, text="1 Month Report",
-                                                  command=lambda: self.generate_report(1))
+                                           command=lambda: self.generate_report(1))
         self.report_month_1.grid(row=1, column=0, padx=20, pady=10, columnspan=2, sticky='news')
 
         self.report_month_3 = ct.CTkButton(self, text="3 Month Report",
-                                                  command=lambda: self.generate_report(3))
+                                           command=lambda: self.generate_report(3))
         self.report_month_3.grid(row=1, column=2, padx=20, pady=10, columnspan=2, sticky='news')
 
         self.report_month_6 = ct.CTkButton(self, text="6 Month Report",
-                                                  command=lambda: self.generate_report(6))
+                                           command=lambda: self.generate_report(6))
         self.report_month_6.grid(row=1, column=4, padx=20, pady=10, columnspan=2, sticky='news')
 
         self.report_month_9 = ct.CTkButton(self, text="9 Month Report",
-                                                  command=lambda: self.generate_report(9))
+                                           command=lambda: self.generate_report(9))
         self.report_month_9.grid(row=2, column=0, padx=20, pady=10, columnspan=2, sticky='news')
 
         self.report_month_12 = ct.CTkButton(self, text="12 Month Report",
-                                                  command=lambda: self.generate_report(12))
+                                            command=lambda: self.generate_report(12))
         self.report_month_12.grid(row=2, column=2, padx=20, pady=10, columnspan=2, sticky='news')
 
         self.report_last_inventory = ct.CTkButton(self, text="Last Inventory",
                                                   command=lambda: self.generate_report("last_inventory"))
         self.report_last_inventory.grid(row=2, column=4, padx=20, pady=10, columnspan=2, sticky='news')
-
-    def subtract_time(self, time_frame, current_time):
-
-        new_month = current_time.month - time_frame
-        new_year = current_time.year
-
-        if new_month <= 0:
-            new_month += 12
-            new_year -= 1
-
-        return f"{new_month}-{current_time.day}-{new_year}"
 
     def open_report_folder(self):
 
@@ -288,35 +353,60 @@ class DatabaseMenu(ct.CTkFrame):
 
     def generate_report(self, time_frame):
 
+        cursor, connection = self.manager.get_database()
+
         current_date = datetime.now()
         report_time = None
+        report_name = None
 
         if time_frame == 1:
-            report_time = self.subtract_time(1, current_date)
+            report_name = f"1_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=1)
+            report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 3:
-            report_time = self.subtract_time(3, current_date)
+            report_name = f"3_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=3)
+            report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 6:
-            report_time = self.subtract_time(6, current_date)
+            report_name = f"6_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=6)
+            report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 9:
-            report_time = self.subtract_time(9, current_date)
+            report_name = f"9_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=9)
+            report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 12:
-            report_time = self.subtract_time(12, current_date)
+            report_name = f"12_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=12)
+            report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == "last_inventory":
+            report_name = f"last_inventory_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             report_time = self.manager.get_last_inventory_date()
 
-        if report_time:
+        if report_time and report_name:
             command = f"""SELECT 
                                 m.DATE,
                                 m.SERIAL_NUM,
-                                GROUP_CONCAT(p.PARTS_USED || ' x' || p.QUANTITY, ',') AS Parts_List,
+                                GROUP_CONCAT(p.PART_USED || ' x' || p.QUANTITY, ',') AS Parts_List,
                                 f.FILE_PATH
                             FROM MACHINES m
                             LEFT JOIN PARTS_USED p ON m.ENTRY_ID = p.ENTRY_ID
                             LEFT JOIN FILE_HASH f ON m.ENTRY_ID = f.ENTRY_ID
-                            WHERE m.DATE >= {report_time}
-                            GROUP BY m.ENTRY_ID;"""
+                            WHERE m.DATE >= '{report_time}'
+                            GROUP BY m.ENTRY_ID
+                            ORDER BY m.DATE DESC;"""
 
-            print(command)
+            cursor.execute(command)
+            rows = cursor.fetchall()
+
+            headers = [description[0] for description in cursor.description]
+
+            report_path = os.path.join(self.manager.get_reports_dir(), report_name)
+
+            with open(report_path, 'w', newline='', encoding='utf-8') as report_csv:
+                writer = csv.writer(report_csv)
+                writer.writerow(headers)
+                writer.writerows(rows)
 
         return
 
@@ -498,6 +588,16 @@ class AboutMenu(ct.CTkFrame):
         webbrowser.open(link)
 
 
+"""
+Description: 
+    Houses
+Args:
+
+Returns:
+
+"""
+
+
 class HelpMenu(ct.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
@@ -526,117 +626,6 @@ class HelpMenu(ct.CTkFrame):
         self.database_label.grid(row=6, column=0, columnspan=3, sticky="e", pady=10)
 
 
-def setup():
-    try:
-        import webbrowser
-    except Exception as e:
-        print("failed webbrowser")
-
-    try:
-        import os
-    except Exception as e:
-        print("failed os")
-
-    try:
-        import tkinter
-    except Exception as e:
-        print("failed tkinter")
-
-    try:
-        import json
-    except Exception as e:
-        print("failed json")
-
-    try:
-        import pathlib
-    except Exception as e:
-        print("failed pathlib")
-
-    try:
-        import threading
-    except Exception as e:
-        print("failed threading")
-
-    try:
-        import glob
-    except Exception as e:
-        print("failed glob")
-
-    try:
-        import shutil
-    except Exception as e:
-        print("failed shutil")
-
-    try:
-        import logging
-    except Exception as e:
-        print("failed logging")
-
-    try:
-        import datetime
-    except Exception as e:
-        print("failed datetime")
-
-    try:
-        import sqlite3
-    except Exception as e:
-        print("failed sqlite3")
-
-    try:
-        import hashlib
-    except Exception as e:
-        print("failed hashlib")
-
-    try:
-        import cv2
-    except Exception as e:
-        print("failed cv2")
-
-    try:
-        import pyzbar.pyzbar
-    except Exception as e:
-        print("failed pyzbar")
-
-    try:
-        import PIL
-    except Exception as e:
-        print("failed PIL")
-
-    try:
-        import fitz
-    except Exception as e:
-        print("failed fitz")
-
-    try:
-        import collections
-    except Exception as e:
-        print("failed collections")
-
-    try:
-        import numpy
-    except Exception as e:
-        print("failed numpy")
-
-    try:
-        import pytesseract
-    except Exception as e:
-        print("failed pytessteract")
-
-    try:
-        import re
-    except Exception as e:
-        print("failed re")
-
-    try:
-        import rapidfuzz
-    except Exception as e:
-        print("failed rapidfuzz")
-
-        #input()
-
-
 if __name__ == "__main__":
-    setup()
-
     app = Log_Book_GUI()
     app.mainloop()
