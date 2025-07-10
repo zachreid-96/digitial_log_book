@@ -9,6 +9,7 @@ import webbrowser
 import tkinter as tk
 import customtkinter as ct
 
+from math import ceil
 from pdf_viewer import PDFViewer
 from config import DirectoryManager
 from file_manager import populate_files
@@ -16,8 +17,8 @@ from manufacturer_handler import manufacturer_multi
 from database_handler import database_add_files, barcode_wrapper
 
 from pathlib import Path
-from datetime import datetime
 from tkinter import filedialog
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from multiprocessing import Pool, Manager, set_start_method
 
@@ -56,7 +57,7 @@ class Log_Book_GUI(ct.CTk):
                                            command=self.show_process_menu)
         self.Process_button.grid(row=1, column=0, padx=20, pady=10)
 
-        self.Database_button = ct.CTkButton(self.sidebar_frame, text="Database",
+        self.Database_button = ct.CTkButton(self.sidebar_frame, text="Reports",
                                             command=self.show_database_menu)
         self.Database_button.grid(row=2, column=0, padx=20, pady=10)
 
@@ -64,7 +65,7 @@ class Log_Book_GUI(ct.CTk):
                                             command=self.show_manual_menu)
         self.Manual_button.grid(row=3, column=0, padx=20, pady=10)
 
-        self.Settings_button = ct.CTkButton(self.sidebar_frame, text="Settings",
+        self.Settings_button = ct.CTkButton(self.sidebar_frame, text="Directories",
                                             command=self.show_settings_menu)
         self.Settings_button.grid(row=4, column=0, padx=20, pady=10)
 
@@ -103,7 +104,7 @@ class Log_Book_GUI(ct.CTk):
         self._switch_view(ProcessMenu)
 
     def show_database_menu(self):
-        self._switch_view(DatabaseMenu)
+        self._switch_view(ReportsMenu)
 
     def show_manual_menu(self):
         self._switch_view(PDFViewer)
@@ -219,85 +220,113 @@ class ProcessMenu(ct.CTkFrame):
 
     def thread_multi(self):
 
-        start = time.perf_counter()
-        print(f"Start: {start}")
-
         self.manager.create_logger()
-
         path = self.manager.unsorted_dir
-
-        files = populate_files(path)
-        self.progress.set("Status... EXTRACTING DATA FROM LOGS")
 
         try:
             set_start_method('spawn', force=True)
         except RuntimeError:
             pass
 
-        cpu_count = max(1, os.cpu_count() // 2)
-
-        process_chunks = [files[i::cpu_count] for i in range(cpu_count)]
         with Manager() as manager:
-            manual_sort_list = manager.list()
-            process_args = [(chunk, manual_sort_list) for chunk in process_chunks]
-            with Pool(processes=cpu_count) as pool:
-               pool.starmap(manufacturer_multi, process_args)
 
-            self.progress.set("Status... ADDING DATA TO DATABASE")
+            manual_sort_list = manager.list()
+
+            files = populate_files(path)
+            self.progress.set("Status... EXTRACTING DATA FROM LOGS")
+
+            process_start = time.perf_counter()
+            #print(f"Start: {process_start}")
+
+            cpu_count = max(1, os.cpu_count() // 2)
+            adjusted_cpu_count = min(cpu_count, len(files) // 25)
+
+            if len(files) > 0:
+                process_chunks = [files[i::adjusted_cpu_count] for i in range(adjusted_cpu_count)]
+                process_args = [(chunk, manual_sort_list) for chunk in process_chunks]
+                with Pool(processes=adjusted_cpu_count) as pool:
+                   pool.starmap(manufacturer_multi, process_args)
+
+            process_end = time.perf_counter()
+            print(f"OCR - Execution on {len(files)} files took {process_end - process_start:.2f} seconds.")
+
+            barcode_start = time.perf_counter()
+
+            self.progress.set("Status... EXTRACTING BARCODE DATA")
             self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
 
             # Get files
             cursor, connection = self.manager.get_database()
             cursor.execute('SELECT STEM FROM FILE_HASH')
-            processed_stems = cursor.fetchall()
+            processed_stems = [stem for stem, in cursor.fetchall()]
+
+            manual_review_files = []
+            with open(self.manager.get_manual_json(), 'r') as manual_files:
+                data = json.load(manual_files)
+                manual_review_files = [
+                    entry['file'] for entry in data
+                ]
 
             files = []
             for file in glob.glob(str(Path(self.manager.get_logbook_dir()).resolve() / '**' / '*.pdf'), recursive=True):
                 stem = Path(file).stem
                 if stem not in processed_stems:
                     files.append(file)
+                elif file not in manual_review_files:
+                    files.append(file)
 
-            files_sorted = sorted(files, key=self.sort_key)
-            barcode_list = manager.list()
-            barcode_chunks = [files_sorted[i::cpu_count] for i in range(cpu_count)]
-            barcode_args = [(chunk, barcode_list) for chunk in barcode_chunks]
+            if len(files) > 0:
 
-            with Pool(processes=cpu_count) as pool:
-                pool.starmap(barcode_wrapper, barcode_args)
+                files_sorted = sorted(files, key=self.sort_key)
+                adjusted_cpu_count = min(cpu_count, len(files_sorted) // 25)
 
-            for entry in barcode_list:
+                barcode_list = manager.list()
+                barcode_chunks = [files_sorted[i::adjusted_cpu_count] for i in range(adjusted_cpu_count)]
+                barcode_args = [(chunk, barcode_list) for chunk in barcode_chunks]
 
-                if not entry['parts_data']:
-                    file_name_parts = Path(entry).stem.split('_')
+                with Pool(processes=adjusted_cpu_count) as pool:
+                    pool.starmap(barcode_wrapper, barcode_args)
 
-                    brand = None
-                    if 'Kyocera' in entry['file']:
-                        brand = 'Kyocera'
-                    elif 'HP' in entry['file']:
-                        brand = 'HP'
-                    elif 'Canon' in entry['file']:
-                        brand = 'Canon'
-                    elif 'Konica' in entry['file']:
-                        brand = 'Konica'
+                barcode_end = time.perf_counter()
+                print(f"Barcode - Execution on {len(files)} files took {barcode_end - barcode_start:.2f} seconds.")
 
-                    manual_sort_list.append({
-                        'file': entry['file'],
-                        'serial_num': file_name_parts[1],
-                        'date': file_name_parts[0],
-                        'brand': brand,
-                        'parts': None
-                    })
-                else:
-                    database_add_files(entry['file'], entry['parts_data'])
+                self.progress.set("Status... ADDING DATA TO DATABASE")
+                database_start = time.perf_counter()
+                barcode_length = len(barcode_list)
 
-            with open(self.manager.get_manual_json(), 'w') as manual_json:
-                json.dump(list(manual_sort_list), manual_json, indent=4)
+                for entry in barcode_list:
 
-        end = time.perf_counter()
+                    if not entry['parts_data']:
+                        file_name_parts = Path(entry['file']).stem.split('_')
+
+                        brand = None
+                        if 'Kyocera' in entry['file']:
+                            brand = 'Kyocera'
+                        elif 'HP' in entry['file']:
+                            brand = 'HP'
+                        elif 'Canon' in entry['file']:
+                            brand = 'Canon'
+                        elif 'Konica' in entry['file']:
+                            brand = 'Konica'
+
+                        #manual_sort_list.append({
+                        #    'file': entry['file'],
+                        #    'serial_num': file_name_parts[1],
+                        #    'date': file_name_parts[0],
+                        #    'brand': brand,
+                        #    'parts': None
+                        #})
+                    else:
+                        database_add_files(entry['file'], entry['parts_data'])
+                        #pass
+
+                with open(self.manager.get_manual_json(), 'w') as manual_json:
+                    json.dump(list(manual_sort_list), manual_json, indent=4)
+
+            database_end = time.perf_counter()
+            print(f"Database - Execution on {barcode_length} files took {database_end - database_start:.2f} seconds.")
+
         self.progress.set("Status... DONE")
-
-        print(f"End: {end}\n")
-        print(f"Execution on {len(files)} files took {end - start:.2f} seconds.")
 
     def sort_key(self, file):
         name = Path(file).stem.split('_')
@@ -308,50 +337,80 @@ class ProcessMenu(ct.CTkFrame):
             return 0, name
 
 
-class DatabaseMenu(ct.CTkFrame):
+class ReportsMenu(ct.CTkFrame):
 
     def __init__(self, master):
         super().__init__(master)
 
         self.manager = DirectoryManager()
 
-        self.report_label = ct.CTkLabel(self, text="Generate Pre-determined Reports",
-                                        font=ct.CTkFont(size=15, weight="bold"))
-        self.report_label.grid(row=0, column=0, padx=20, pady=(20, 10), columnspan=4, sticky='news')
+        self.full_report_label = ct.CTkLabel(self, text="Generate Full Usage Reports",
+                                             font=ct.CTkFont(size=15, weight="bold"))
+        self.full_report_label.grid(row=0, column=0, padx=20, pady=(20, 10), columnspan=4, sticky='news')
 
         self.open_reports = ct.CTkButton(self, text="Open Reports",
                                          command=self.open_report_folder)
-        self.open_reports.grid(row=3, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+        self.open_reports.grid(row=6, column=0, padx=20, pady=10, columnspan=2, sticky='news')
 
-        self.report_month_1 = ct.CTkButton(self, text="1 Month Report",
-                                           command=lambda: self.generate_report(1))
-        self.report_month_1.grid(row=1, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+        self.full_report_month_1 = ct.CTkButton(self, text="1 Month Report",
+                                                command=lambda: self.generate_full_report(1))
+        self.full_report_month_1.grid(row=1, column=0, padx=20, pady=10, columnspan=2, sticky='news')
 
-        self.report_month_3 = ct.CTkButton(self, text="3 Month Report",
-                                           command=lambda: self.generate_report(3))
-        self.report_month_3.grid(row=1, column=2, padx=20, pady=10, columnspan=2, sticky='news')
+        self.full_report_month_3 = ct.CTkButton(self, text="3 Month Report",
+                                                command=lambda: self.generate_full_report(3))
+        self.full_report_month_3.grid(row=1, column=2, padx=20, pady=10, columnspan=2, sticky='news')
 
-        self.report_month_6 = ct.CTkButton(self, text="6 Month Report",
-                                           command=lambda: self.generate_report(6))
-        self.report_month_6.grid(row=1, column=4, padx=20, pady=10, columnspan=2, sticky='news')
+        self.full_report_month_6 = ct.CTkButton(self, text="6 Month Report",
+                                                command=lambda: self.generate_full_report(6))
+        self.full_report_month_6.grid(row=1, column=4, padx=20, pady=10, columnspan=2, sticky='news')
 
-        self.report_month_9 = ct.CTkButton(self, text="9 Month Report",
-                                           command=lambda: self.generate_report(9))
-        self.report_month_9.grid(row=2, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+        self.full_report_month_9 = ct.CTkButton(self, text="9 Month Report",
+                                                command=lambda: self.generate_full_report(9))
+        self.full_report_month_9.grid(row=2, column=0, padx=20, pady=10, columnspan=2, sticky='news')
 
-        self.report_month_12 = ct.CTkButton(self, text="12 Month Report",
-                                            command=lambda: self.generate_report(12))
-        self.report_month_12.grid(row=2, column=2, padx=20, pady=10, columnspan=2, sticky='news')
+        self.full_report_month_12 = ct.CTkButton(self, text="12 Month Report",
+                                                 command=lambda: self.generate_full_report(12))
+        self.full_report_month_12.grid(row=2, column=2, padx=20, pady=10, columnspan=2, sticky='news')
 
-        self.report_last_inventory = ct.CTkButton(self, text="Last Inventory",
-                                                  command=lambda: self.generate_report("last_inventory"))
-        self.report_last_inventory.grid(row=2, column=4, padx=20, pady=10, columnspan=2, sticky='news')
+        self.full_report_last_inventory = ct.CTkButton(self, text="Last Inventory",
+                                                       command=lambda: self.generate_full_report("last_inventory"))
+        self.full_report_last_inventory.grid(row=2, column=4, padx=20, pady=10, columnspan=2, sticky='news')
+
+        # Parts Reporting
+
+        self.parts_report_label = ct.CTkLabel(self, text="Generate Parts Usage Reports",
+                                             font=ct.CTkFont(size=15, weight="bold"))
+        self.parts_report_label.grid(row=3, column=0, padx=20, pady=(20, 10), columnspan=4, sticky='news')
+
+        self.parts_report_month_1 = ct.CTkButton(self, text="1 Month Report",
+                                                command=lambda: self.generate_parts_report(1))
+        self.parts_report_month_1.grid(row=4, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.parts_report_month_3 = ct.CTkButton(self, text="3 Month Report",
+                                                command=lambda: self.generate_parts_report(3))
+        self.parts_report_month_3.grid(row=4, column=2, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.parts_report_month_6 = ct.CTkButton(self, text="6 Month Report",
+                                                command=lambda: self.generate_parts_report(6))
+        self.parts_report_month_6.grid(row=4, column=4, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.parts_report_month_9 = ct.CTkButton(self, text="9 Month Report",
+                                                command=lambda: self.generate_parts_report(9))
+        self.parts_report_month_9.grid(row=5, column=0, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.parts_report_month_12 = ct.CTkButton(self, text="12 Month Report",
+                                                 command=lambda: self.generate_parts_report(12))
+        self.parts_report_month_12.grid(row=5, column=2, padx=20, pady=10, columnspan=2, sticky='news')
+
+        self.parts_report_last_inventory = ct.CTkButton(self, text="Last Inventory",
+                                                       command=lambda: self.generate_parts_report("last_inventory"))
+        self.parts_report_last_inventory.grid(row=5, column=4, padx=20, pady=10, columnspan=2, sticky='news')
 
     def open_report_folder(self):
 
         os.startfile(self.manager.get_reports_dir())
 
-    def generate_report(self, time_frame):
+    def generate_full_report(self, time_frame):
 
         cursor, connection = self.manager.get_database()
 
@@ -360,27 +419,27 @@ class DatabaseMenu(ct.CTkFrame):
         report_name = None
 
         if time_frame == 1:
-            report_name = f"1_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_name = f"full_1_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             format_date = datetime.now() - relativedelta(months=1)
             report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 3:
-            report_name = f"3_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_name = f"full_3_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             format_date = datetime.now() - relativedelta(months=3)
             report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 6:
-            report_name = f"6_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_name = f"full_6_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             format_date = datetime.now() - relativedelta(months=6)
             report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 9:
-            report_name = f"9_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_name = f"full_9_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             format_date = datetime.now() - relativedelta(months=9)
             report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == 12:
-            report_name = f"12_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_name = f"full_12_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             format_date = datetime.now() - relativedelta(months=12)
             report_time = format_date.strftime('%Y-%m-%d')
         elif time_frame == "last_inventory":
-            report_name = f"last_inventory_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_name = f"full_last_inventory_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
             report_time = self.manager.get_last_inventory_date()
 
         if report_time and report_name:
@@ -408,7 +467,91 @@ class DatabaseMenu(ct.CTkFrame):
                 writer.writerow(headers)
                 writer.writerows(rows)
 
+    def generate_parts_report(self, time_frame):
+
+        cursor, connection = self.manager.get_database()
+
+        current_date = datetime.now()
+        report_time = None
+        report_name = None
+        format_date = None
+
+        if time_frame == 1:
+            report_name = f"parts_1_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=time_frame)
+            report_time = format_date.strftime('%Y-%m-%d')
+        elif time_frame == 3:
+            report_name = f"parts_3_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=time_frame)
+            report_time = format_date.strftime('%Y-%m-%d')
+        elif time_frame == 6:
+            report_name = f"parts_6_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=time_frame)
+            report_time = format_date.strftime('%Y-%m-%d')
+        elif time_frame == 9:
+            report_name = f"parts_9_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=time_frame)
+            report_time = format_date.strftime('%Y-%m-%d')
+        elif time_frame == 12:
+            report_name = f"parts_12_month_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            format_date = datetime.now() - relativedelta(months=time_frame)
+            report_time = format_date.strftime('%Y-%m-%d')
+        elif time_frame == "last_inventory":
+            report_name = f"parts_last_inventory_report_{current_date.month}-{current_date.day}-{current_date.year}.csv"
+            report_time = self.manager.get_last_inventory_date()
+
+        if report_time and report_name:
+            command = f"""
+                SELECT
+                    p.PART_USED,
+                    p.QUANTITY
+                FROM MACHINES m
+                LEFT JOIN PARTS_USED p ON m.ENTRY_ID = p.ENTRY_ID
+                WHERE m.DATE >= '{report_time}';"""
+
+            cursor.execute(command)
+            results = cursor.fetchall()
+
+            parts_summary = {}
+
+            for part_number, part_quantity in results:
+                if part_number in parts_summary:
+                    parts_summary[part_number] += part_quantity
+                else:
+                    parts_summary[part_number] = part_quantity
+
+            report_path = os.path.join(self.manager.get_reports_dir(), report_name)
+
+            with open(report_path, 'w', newline='', encoding='utf-8') as report_csv:
+                writer = csv.writer(report_csv)
+                writer.writerow(['Parts Usage Report'])
+                writer.writerow(['Report Range', f'{report_time} to {current_date.year}-{current_date.month}-{current_date.day}'])
+                writer.writerow([])
+
+                writer.writerow(['Part Number', 'Quantity Used', 'Weekly Average', 'Daily Average', 'Suggested Stock'])
+
+                #report_time_difference = self.count_weekdays(format_date, current_date)
+                report_days = self.count_weekdays(format_date, current_date)
+                report_weeks = report_days // 7
+
+                for part, qty in sorted(parts_summary.items(), key=lambda x: x[1], reverse=True):
+                    daily_average = round(qty / report_days, 2)
+                    weekly_average = round(qty / report_weeks, 2)
+                    suggested_stock = max(1, ceil(daily_average * 2)) # Assumes 2 full days without needing a restocking
+                    writer.writerow([part, qty, weekly_average, daily_average, suggested_stock])
+
         return
+
+    def count_weekdays(self, start, end):
+
+        day_count = 0
+        current_date = start
+        while current_date < end:
+            if current_date.weekday() < 5:
+                day_count += 1
+            current_date += timedelta(days=1)
+
+        return day_count
 
 
 class SettingsMenu(ct.CTkFrame):

@@ -73,12 +73,11 @@ Args:
 
 def manufacturer_wrapper(file, data, manual_sort_list=None):
     inventory_subset = {
-        "SERVICE": 1, "INVENTORY": 3, "PICKING": 2, "LIST": 1,
-        "PRINTED": 1, "STOCK": 3, "SIGNATURE": 4, "PACKING": 2}
-    kyocera_subset = {"KYOCERA": 3, "STATUS": 2, "KPDL": 3, "FIRMWARE": 2, "VERSION": 2}
-    hp_subset = {"HP": 3, "USAGE": 3, "PAGE": 1, "TOTALS": 1,
-                 "DEVICE": 1, "INFORMATION": 2, "CONFIGURATION": 3, "LaserJet": 4}
-    canon_subset = {"COUNTER": 2, "REPORT": 2, "DEVICE": 1, "INSTALLATION": 3, "DATE": 1}
+        "SERVICE": 1, "INVENTORY": 4, "PICKING": 4, "LIST": 1,
+        "PRINTED": 1, "STOCK": 4, "SIGNATURE": 6, "PACKING": 4}
+    kyocera_subset = {"KYOCERA": 7, "STATUS": 2, "KPDL": 3, "FIRMWARE": 2, "VERSION": 2}
+    hp_subset = {"HP": 7, "USAGE": 6, "PAGE": 1, "INFORMATION": 2, "CONFIGURATION": 3, "LaserJet": 4}
+    canon_subset = {"COUNTER": 2, "REPORT": 2, "DEVICE": 1, "INSTALLATION": 4, "DATE": 1}
 
     match_threshhold = 80
 

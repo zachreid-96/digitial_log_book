@@ -6,6 +6,7 @@ import hashlib
 import numpy as np
 
 from pathlib import Path
+from datetime import datetime
 from pyzbar.pyzbar import decode
 from PIL import Image, ImageFilter
 from config import DirectoryManager
@@ -105,12 +106,20 @@ def extract_barcode_cv2(file, barcode_list=None):
                 except Exception as e:
                     continue
 
-    parts_tuple = [(part, count) for part, count in Counter(barcode_data).items()]
+    if barcode_data:
 
-    barcode_list.append({
-        'file': file,
-        'parts_data': parts_tuple
-    })
+        parts_tuple = [(part, count) for part, count in Counter(barcode_data).items()]
+
+        barcode_list.append({
+            'file': file,
+            'parts_data': parts_tuple
+        })
+
+    else:
+        barcode_list.append({
+            'file': file,
+            'parts_data': None
+        })
 
 
 def generate_hash(file):
@@ -140,7 +149,8 @@ def write_to_database(file, stem, barcode_data):
     file_name_parts = Path(file).stem.split('_')
 
     serial_number = file_name_parts[1]
-    date = file_name_parts[0]
+    unformatted_date = datetime.strptime(file_name_parts[0], '%m-%d-%Y')
+    date = unformatted_date.strftime('%Y-%m-%d')
     brand = Path(file).parts[-4]
 
     # For stem formats that follow '5-17-2025_19Z0234561.pdf'
@@ -216,7 +226,7 @@ def write_to_database(file, stem, barcode_data):
 def database_add_files(file, barcode_data):
     file_name = Path(file).stem
     #file_hash = generate_hash(file_name)
-
+    #print(file_name)
     # Write Data to Database
     if barcode_data:
         write_to_database(file, file_name, barcode_data)
