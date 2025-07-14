@@ -1,4 +1,5 @@
 import os
+import csv
 import json
 import logging
 import sqlite3
@@ -62,7 +63,8 @@ Description:
 
 class DirectoryManager:
     _instance = None
-    CONFIG_FILE = "config_testing.json"
+    CONFIG_FILE = "config.json"
+    INVENTORY_FILE = "inventory.csv"
 
     def __new__(cls):
         if cls._instance is None:
@@ -75,6 +77,11 @@ class DirectoryManager:
             cls._instance.database_dir = ""
             cls._instance.reports_dir = ""
             cls._instance.manual_json = ""
+            cls._instance.multi_cores = 0
+            cls._instance.restock_days = 3
+            cls._instance.last_inventory = None
+            cls._instance.appearance = 'System'
+            cls._instance.scaling = '100%'
             cls._instance.logger = None
             cls._instance.cursor = None
             cls._instance.connection = None
@@ -82,6 +89,7 @@ class DirectoryManager:
             cls._instance.database_processed = 0
             cls._instance.setup = 0
             cls._instance.longest_dir_pixel = 0
+            cls._instance.menu_tips = True
             cls._instance.load_directories_from_file()
         return cls._instance
 
@@ -98,11 +106,18 @@ class DirectoryManager:
                     self.database_dir = data.get("database_dir")
                     self.reports_dir = data.get("reports_dir")
                     self.manual_json = data.get("manual_json")
+                    self.multi_cores = data.get("multi_cores", 0)
+                    self.restock_days = int(data.get("restock_days", 3))
+                    self.last_inventory = data.get("last_inventory", None)
+                    self.appearance = data.get("appearance", 'System')
+                    self.menu_tips = data.get("menu_tips", True)
 
-                if any(filepath == "" for filepath in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir,
+                if any(filepath is None for filepath in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir,
                                                        self.logbook_dir, self.inventory_dir, self.database_dir,
                                                        self.reports_dir, self.manual_json]):
                     self.setup = 1
+                else:
+                    self.setup = 0
 
                 self.logger = self.get_logger()
                 self.cursor = None
@@ -117,6 +132,7 @@ class DirectoryManager:
                 if self.logger is not None:
                     self.logger.error("Failed to populate Singleton")
                 else:
+                    self.setup = 1
                     pass
         else:
             if not recursive:
@@ -210,6 +226,7 @@ class DirectoryManager:
         return self.logger
 
     def is_setup(self):
+
         if self.setup == 0:
             return True
         return False
@@ -223,4 +240,70 @@ class DirectoryManager:
         with open(self.CONFIG_FILE, 'w') as f:
             json.dump(path_dict, f, indent=4, sort_keys=True)
 
-        return
+        self.load_directories_from_file()
+
+    def write_inventory_file(self, parts_dict):
+
+        if not os.path.exists(self.INVENTORY_FILE):
+            with open(self.INVENTORY_FILE, 'w') as f:
+                pass
+
+        with open(self.INVENTORY_FILE, 'w', newline='', encoding='utf-8') as f:
+            headers = parts_dict[0].keys()
+            writer = csv.DictWriter(f, headers)
+
+            writer.writeheader()
+            writer.writerows(parts_dict)
+
+    def load_inventory(self):
+
+        if not os.path.exists(self.INVENTORY_FILE):
+            return []
+
+        inventory = []
+        with open(self.INVENTORY_FILE, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            inventory = [row for row in reader]
+
+        return inventory
+
+    def write_settings(self, settings=None, directories=None):
+
+        if settings:
+            self.multi_cores = settings.get('selected_cores')
+            self.restock_days = settings.get('selected_restocks')
+            self.last_inventory = settings.get('selected_inventory')
+            self.appearance = settings.get('selected_appearance')
+
+        if directories:
+            self.unsorted_dir = directories.get('unsorted_dir')
+            self.runlog_dir = directories.get('runlog_dir')
+            self.manual_sort_dir = directories.get('manual_sort_dir')
+            self.logbook_dir = directories.get('logbook_dir')
+            self.inventory_dir = directories.get('inventory_dir')
+            self.database_dir = directories.get('database_dir')
+            self.reports_dir = directories.get('reports_dir')
+
+        config_dict = {
+            'unsorted_dir': self.unsorted_dir,
+            'runlog_dir': self.runlog_dir,
+            'manual_sort_dir': self.manual_sort_dir,
+            'logbook_dir': self.logbook_dir,
+            'inventory_dir': self.inventory_dir,
+            'database_dir': self.database_dir,
+            'reports_dir': self.reports_dir,
+            'manual_json': self.manual_json,
+            'multi_cores': self.multi_cores,
+            'restock_days': self.restock_days,
+            'last_inventory': self.last_inventory,
+            'appearance': self.appearance,
+            'menu_tips': self.menu_tips
+        }
+
+        with open(self.CONFIG_FILE, 'w') as f:
+            json.dump(config_dict, f, indent=4, sort_keys=True)
+
+        pass
+
+    def get_inventory_file(self):
+        return self.INVENTORY_FILE
