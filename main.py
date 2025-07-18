@@ -81,7 +81,7 @@ class Log_Book_GUI(ct.CTk):
 
         self.current_view = None
 
-        self._switch_view(ProcessMenu)
+        self._switch_view(AboutMenu)
 
     def toggle_menu_tips(self):
         self.manager.menu_tips = not self.manager.menu_tips

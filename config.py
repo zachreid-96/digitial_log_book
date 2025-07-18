@@ -90,6 +90,7 @@ class DirectoryManager:
             cls._instance.setup = 0
             cls._instance.longest_dir_pixel = 0
             cls._instance.menu_tips = True
+            cls._instance.version = '2.1.0'
             cls._instance.load_directories_from_file()
         return cls._instance
 
