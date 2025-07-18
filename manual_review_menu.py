@@ -1,3 +1,4 @@
+import os
 import fitz
 import json
 
@@ -5,6 +6,8 @@ import customtkinter as ct
 
 from PIL import Image
 from config import DirectoryManager
+from file_manager import move_file_manual_sort
+from database_handler import database_add_files
 
 class PDFViewer(ct.CTkFrame):
 
@@ -74,7 +77,9 @@ class PDFViewer(ct.CTkFrame):
                                    f'{self.part_entry.get()} x {self.quantity_entry.get()}\n')
             self.parts_list.configure(state="disabled")
             self.part_line += 1
-            
+
+            self.part_entry.delete(0, 'end')
+            self.quantity_entry.delete(0, 'end')
             self.part_entry.configure(placeholder_text="Part Number")
             self.quantity_entry.configure(placeholder_text="QTY")
 
@@ -191,8 +196,38 @@ class PDFViewer(ct.CTkFrame):
         self.pages[self.current_page]['parts'] = filtered_parts
         self.pages[self.current_page]['deletion'] = True if self.delete_checkbox.get() == 1 else False
 
+
     def submit_logs(self):
-        pass
+
+        self.data_capture_edits()
+        removable_pages = []
+
+        for file in self.pages:
+            if any(item for item in
+                   [file['serial_num'], file['date'], file['brand'], file['parts']]
+                   ) is not None:
+                move_file_manual_sort(file)
+            break
+
+        for file in self.pages:
+            if file.get('new_file', None) is not None and file['brand'] != 'Inventory':
+                database_add_files(file['new_file'], file['parts'])
+
+            if file.get('new_file', None) is not None:
+                removable_pages.append(file)
+            if file.get('deletion', False) is True:
+                removable_pages.append(file)
+                os.remove(file)
+
+        still_needs_review = [file for file in self.pages
+                              if file not in removable_pages]
+
+        pages_json = self.manager.get_manual_json()
+
+        with open(pages_json, 'w') as local_manual_json:
+            data = json.load(local_manual_json)
+            data.append(entry for entry in list(still_needs_review))
+            json.dump(list(data), local_manual_json, indent=4)
 
     def remove_focus(self, event):
         for entry in self.entries:

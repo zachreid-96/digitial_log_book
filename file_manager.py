@@ -2,6 +2,7 @@ import os
 import glob
 import shutil
 
+from datetime import datetime
 from config import convert_month_str, DirectoryManager
 
 """
@@ -19,13 +20,13 @@ Args:
     brand: 'Inventory_Pages', 'Kyocera', 'HP', 'Canon'
 """
 
-def file_manager_wrapper(file, serial_number, date, brand, manual_sort_list=None):
+def file_manager_wrapper(file, serial_number, date, brand, manual_sort_list=None, flagged=False):
 
     if serial_number is not None and date is not None:
-        move_file_success(file, serial_number, date, brand, manual_sort_list)
+        move_file_success(file, serial_number, date, brand, manual_sort_list, flagged=False)
 
     elif brand == "Inventory" and date is not None:
-        move_file_success(file, serial_number, date, brand, manual_sort_list)
+        move_file_success(file, serial_number, date, brand, manual_sort_list, flagged=False)
 
     elif date is None or serial_number is None:
 
@@ -66,7 +67,7 @@ Args:
 """
 
 
-def move_file_success(file, serial_number, date, brand, multiple=True, manual_sort_list=None):
+def move_file_success(file, serial_number, date, brand, multiple=True, manual_sort_list=None, flagged=False):
     path_manager = DirectoryManager()
     logbook_path = path_manager.get_logbook_dir()
     inventory_page_path = path_manager.get_inventory_dir()
@@ -91,6 +92,8 @@ def move_file_success(file, serial_number, date, brand, multiple=True, manual_so
     if destination_folder is None and new_filename is None:
         move_file_warning(file, serial_number, date, brand, manual_sort_list, multiple=True)
 
+    logged_filename = ''
+
     try:
         if multiple:
             if not os.path.exists(os.path.join(destination_folder, f"{new_filename}.pdf")):
@@ -101,6 +104,7 @@ def move_file_success(file, serial_number, date, brand, multiple=True, manual_so
                         \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                 logger.info(message)
+                logged_filename = os.path.join(destination_folder, f"{new_filename}.pdf")
             else:
                 count = 1
                 while True:
@@ -112,6 +116,7 @@ def move_file_success(file, serial_number, date, brand, multiple=True, manual_so
                                             \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                         logger.info(message)
+                        logged_filename = os.path.join(destination_folder, f"{new_filename}_{count}.pdf")
                         break
                     count += 1
         if not multiple:
@@ -123,6 +128,16 @@ def move_file_success(file, serial_number, date, brand, multiple=True, manual_so
                         \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
                 logger.info(message)
+                logged_filename = os.path.join(destination_folder, f"{new_filename}.pdf")
+
+        if flagged:
+            manual_sort_list.append({
+                'file': logged_filename,
+                'serial_num': serial_number,
+                'date': date.strftime('%Y/%m/%d') if date else None,
+                'brand': brand
+            })
+
     except Exception as e:
         logger.warning(e)
         move_file_warning(file, serial_number, date, brand, manual_sort_list, multiple=True)
@@ -193,3 +208,90 @@ def move_file_warning(file, serial_number, date, brand, manual_sort_list, multip
         'date': date.strftime('%Y/%m/%d') if date else None,
         'brand': brand
     })
+
+def format_submitted_date(old_date):
+
+    try:
+        date = datetime.strptime(old_date, '%Y/%m/%d')
+        return date
+    except ValueError:
+        pass
+    try:
+        date = datetime.strptime(old_date, '%Y-%m-%d')
+        return date
+    except ValueError:
+        pass
+    try:
+        date = datetime.strptime(old_date, '%m/%d/%Y')
+        return date
+    except ValueError:
+        pass
+    try:
+        date = datetime.strptime(old_date, '%m-%d-%Y')
+        return date
+    except ValueError:
+        pass
+
+def move_file_manual_sort(dict_obj, multiple=True):
+
+    path_manager = DirectoryManager()
+    logbook_path = path_manager.get_logbook_dir()
+    inventory_page_path = path_manager.get_inventory_dir()
+    unsorted_path = path_manager.get_unsorted_dir()
+    logger = path_manager.get_logger()
+
+    serial_number = dict_obj['serial_num']
+    date = format_submitted_date(dict_obj['date'])
+    brand = dict_obj['brand']
+    file = dict_obj['file']
+
+    destination_folder = None
+    new_filename = None
+
+    if serial_number is not None and date is not None:
+        destination_folder = rf"{logbook_path}\{brand}\{date.year}\{convert_month_str(date.month)}"
+        os.makedirs(destination_folder, exist_ok=True)
+
+        new_filename = f"{date.month}-{date.day}-{date.year}_{serial_number}"
+
+    elif brand == "Inventory" and date is not None:
+        destination_folder = rf"{inventory_page_path}\{date.year}\{convert_month_str(date.month)}"
+        os.makedirs(destination_folder, exist_ok=True)
+
+        new_filename = f"{date.month}-{date.day}-{date.year}_Inventory"
+
+    if multiple:
+        if not os.path.exists(os.path.join(destination_folder, f"{new_filename}.pdf")):
+            shutil.move(file, os.path.join(destination_folder, f"{new_filename}.pdf"))
+
+            message = f"""RENAMED {file.split("\\")[-1]} to {new_filename}.pdf
+                    \t MOVED {new_filename}.pdf to {destination_folder}
+                    \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
+
+            dict_obj['new_file'] = os.path.join(destination_folder, f"{new_filename}.pdf")
+            logger.info(message)
+        else:
+            count = 1
+            while True:
+                if not os.path.exists(os.path.join(destination_folder, f"{new_filename}_{count}.pdf")):
+                    shutil.move(file, os.path.join(destination_folder, f"{new_filename}_{count}.pdf"))
+
+                    message = f"""RENAMED {file.split("\\")[-1]} to {new_filename}_{count}.pdf
+                                        \t MOVED {new_filename}.pdf_{count} to {destination_folder}
+                                        \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
+
+                    dict_obj['new_file'] = os.path.join(destination_folder, f"{new_filename}.pdf")
+                    logger.info(message)
+                    break
+                count += 1
+    if not multiple:
+        if not os.path.exists(os.path.join(destination_folder, f"{new_filename}.pdf")):
+            shutil.move(file, os.path.join(destination_folder, f"{new_filename}.pdf"))
+
+            message = f"""RENAMED {file.split("\\")[-1]} to {new_filename}.pdf
+                    \t MOVED {new_filename}.pdf to {destination_folder}
+                    \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
+
+            logger.info(message)
+
+            dict_obj['new_file'] = os.path.join(destination_folder, f"{new_filename}.pdf")

@@ -119,7 +119,8 @@ def parse_inventory(file, data, manual_sort_list=None):
             except Exception:
                 pass
 
-    file_manager_wrapper(file=file, serial_number=None, date=date, brand='Inventory', manual_sort_list=manual_sort_list)
+    file_manager_wrapper(file=file, serial_number=None, date=date,
+                         brand='Inventory', manual_sort_list=manual_sort_list)
 
 
 """
@@ -141,6 +142,9 @@ def parse_kyocera(file, data, manual_sort_list=None):
     excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
     excluded_phrase = ("dpi", "dpl", "dp1")
 
+    lower = 'abcdefghijklmnopqrstuvwxyz'
+    bad_serial_flag = False
+
     for entry in data:
         temp = entry.strip()
         if len(temp) >= 10:
@@ -153,6 +157,8 @@ def parse_kyocera(file, data, manual_sort_list=None):
 
                 if not temp_normalized[:3].isnumeric() and serial_number is None:
                     serial_number = temp_normalized
+                    if any(char in lower for char in temp):
+                        bad_serial_flag = True
 
         if date is None:
             try:
@@ -163,7 +169,8 @@ def parse_kyocera(file, data, manual_sort_list=None):
         if date is not None and serial_number is not None:
             break
 
-    file_manager_wrapper(file=file, serial_number=serial_number, date=date, brand='Kyocera', manual_sort_list=manual_sort_list)
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date,
+                         brand='Kyocera', manual_sort_list=manual_sort_list, flagged=bad_serial_flag)
 
 
 """
@@ -186,6 +193,9 @@ def parse_hp(file, data, manual_sort_list=None):
     excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
     excluded_phrase = ("dpi", "dpl", "dp1")
 
+    lower = 'abcdefghijklmnopqrstuvwxyz'
+    bad_serial_flag = False
+
     for entry in data:
         temp = entry.strip()
         if (any(char.isdigit() for char in temp)
@@ -193,6 +203,8 @@ def parse_hp(file, data, manual_sort_list=None):
                 and not any(char in excluded_chars for char in temp)
                 and len(temp) == 10 and not temp.endswith(excluded_phrase)):
             serial_number = temp
+            if any(char in lower for char in temp):
+                bad_serial_flag = True
         if date is None:
             try:
                 date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
@@ -202,18 +214,24 @@ def parse_hp(file, data, manual_sort_list=None):
         if date is not None and serial_number is not None:
             break
 
-    file_manager_wrapper(file=file, serial_number=serial_number, date=date, brand='HP', manual_sort_list=manual_sort_list)
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date,
+                         brand='HP', manual_sort_list=manual_sort_list, flagged=bad_serial_flag)
 
 
 def parse_canon(file, data, manual_sort_list=None):
     date = None
     serial_number = None
 
+    lower = 'abcdefghijklmnopqrstuvwxyz'
+    bad_serial_flag = False
+
     for entry in data:
         temp = entry.strip()
         if (serial_number is None and any(char.isdigit() for char in temp)
                 and any(char.isalpha() for char in temp) and len(temp) == 8):
             serial_number = temp
+            if any(char in lower for char in temp):
+                bad_serial_flag = True
         if date is None:
             try:
                 date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
@@ -223,4 +241,5 @@ def parse_canon(file, data, manual_sort_list=None):
         if date is not None and serial_number is not None:
             break
 
-    file_manager_wrapper(file=file, serial_number=serial_number, date=date, brand='Canon', manual_sort_list=manual_sort_list)
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date,
+                         brand='Canon', manual_sort_list=manual_sort_list, flagged=bad_serial_flag)
