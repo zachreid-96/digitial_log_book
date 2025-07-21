@@ -75,7 +75,7 @@ def manufacturer_wrapper(file, data, manual_sort_list=None):
     inventory_subset = {
         "SERVICE": 1, "INVENTORY": 4, "PICKING": 4, "LIST": 1,
         "PRINTED": 1, "STOCK": 4, "SIGNATURE": 6, "PACKING": 4}
-    kyocera_subset = {"KYOCERA": 7, "STATUS": 2, "KPDL": 3, "FIRMWARE": 2, "VERSION": 2}
+    kyocera_subset = {"KYOCERA": 7, "STATUS": 2, "KPDL": 7, "FIRMWARE": 2, "VERSION": 2, "KIR": 7}
     hp_subset = {"HP": 7, "USAGE": 6, "PAGE": 1, "INFORMATION": 2, "CONFIGURATION": 3, "LaserJet": 4}
     canon_subset = {"COUNTER": 2, "REPORT": 2, "DEVICE": 1, "INSTALLATION": 4, "DATE": 1}
 
@@ -142,7 +142,7 @@ def parse_kyocera(file, data, manual_sort_list=None):
     excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
     excluded_phrase = ("dpi", "dpl", "dp1")
 
-    lower = 'abcdefghijklmnopqrstuvwxyz'
+    lower = 'abcdefghijklmnopqrstuvwxyz-_[].,;:()#/?<>|'
     bad_serial_flag = False
 
     for entry in data:
@@ -163,6 +163,8 @@ def parse_kyocera(file, data, manual_sort_list=None):
         if date is None:
             try:
                 date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+                if date.year > datetime.now().year:
+                    date = None
             except Exception:
                 pass
 
@@ -193,7 +195,7 @@ def parse_hp(file, data, manual_sort_list=None):
     excluded_chars = "-_[].,;:()#/?<>|\\\'\"“"
     excluded_phrase = ("dpi", "dpl", "dp1")
 
-    lower = 'abcdefghijklmnopqrstuvwxyz'
+    lower = 'abcdefghijklmnopqrstuvwxyz-_[].,;:()#/?<>|'
     bad_serial_flag = False
 
     for entry in data:
@@ -208,6 +210,8 @@ def parse_hp(file, data, manual_sort_list=None):
         if date is None:
             try:
                 date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+                if date.year > datetime.now().year:
+                    date = None
             except Exception:
                 pass
 
@@ -222,7 +226,7 @@ def parse_canon(file, data, manual_sort_list=None):
     date = None
     serial_number = None
 
-    lower = 'abcdefghijklmnopqrstuvwxyz'
+    lower = 'abcdefghijklmnopqrstuvwxyz-_[].,;:()#/?<>|'
     bad_serial_flag = False
 
     for entry in data:
@@ -235,6 +239,8 @@ def parse_canon(file, data, manual_sort_list=None):
         if date is None:
             try:
                 date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+                if date.year > datetime.now().year:
+                    date = None
             except Exception:
                 pass
 

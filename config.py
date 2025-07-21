@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 
+from pathlib import Path
 from datetime import datetime
 
 """
@@ -65,6 +66,8 @@ class DirectoryManager:
     _instance = None
     CONFIG_FILE = "config.json"
     INVENTORY_FILE = "inventory.csv"
+    DATABASE_FILE = "parts_logger.db"
+    MANUAL_SORT_JSON = "manual_sort.json"
 
     def __new__(cls):
         if cls._instance is None:
@@ -74,9 +77,7 @@ class DirectoryManager:
             cls._instance.manual_sort_dir = ""
             cls._instance.logbook_dir = ""
             cls._instance.inventory_dir = ""
-            cls._instance.database_dir = ""
             cls._instance.reports_dir = ""
-            cls._instance.manual_json = ""
             cls._instance.multi_cores = 0
             cls._instance.restock_days = 3
             cls._instance.last_inventory = None
@@ -91,6 +92,7 @@ class DirectoryManager:
             cls._instance.longest_dir_pixel = 0
             cls._instance.menu_tips = True
             cls._instance.version = '2.1.0'
+            cls._instance.running = False
             cls._instance.load_directories_from_file()
         return cls._instance
 
@@ -104,9 +106,7 @@ class DirectoryManager:
                     self.manual_sort_dir = data.get("manual_sort_dir")
                     self.logbook_dir = data.get("logbook_dir")
                     self.inventory_dir = data.get("inventory_dir")
-                    self.database_dir = data.get("database_dir")
                     self.reports_dir = data.get("reports_dir")
-                    self.manual_json = data.get("manual_json")
                     self.multi_cores = data.get("multi_cores", 0)
                     self.restock_days = int(data.get("restock_days", 3))
                     self.last_inventory = data.get("last_inventory", None)
@@ -114,8 +114,7 @@ class DirectoryManager:
                     self.menu_tips = data.get("menu_tips", True)
 
                 if any(filepath is None for filepath in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir,
-                                                       self.logbook_dir, self.inventory_dir, self.database_dir,
-                                                       self.reports_dir, self.manual_json]):
+                                                       self.logbook_dir, self.inventory_dir, self.reports_dir]):
                     self.setup = 1
                 else:
                     self.setup = 0
@@ -125,7 +124,7 @@ class DirectoryManager:
                 self.connection = None
 
                 for temp_str in [self.unsorted_dir, self.runlog_dir, self.manual_sort_dir, self.logbook_dir,
-                                 self.inventory_dir, self.database_dir]:
+                                 self.inventory_dir]:
                     if len(temp_str) * 8 > self.longest_dir_pixel:
                         self.longest_dir_pixel = len(temp_str) * 8
 
@@ -138,11 +137,16 @@ class DirectoryManager:
         else:
             if not recursive:
                 with open(self.CONFIG_FILE, "w") as file:
-                    self.load_directories_from_file(True)
+                    pass
+                self.load_directories_from_file(True)
+
+        for file in [self.CONFIG_FILE, self.INVENTORY_FILE, self.DATABASE_FILE, self.MANUAL_SORT_JSON]:
+            if not os.path.exists(file):
+                with open(file, 'w') as f:
+                    pass
 
     def setup_database(self):
-        database_name = self.database_dir
-        connection = sqlite3.connect(database_name)
+        connection = sqlite3.connect(self.DATABASE_FILE)
         cursor = connection.cursor()
 
         machines = """CREATE TABLE MACHINES(
@@ -182,13 +186,12 @@ class DirectoryManager:
         connection.close()
 
     def get_database(self):
-        database_name = self.database_dir
         if self.logger is None:
             # print('logger is setup')
             self.create_logger()
 
         self.setup_database()
-        self.connection = sqlite3.connect(database_name)
+        self.connection = sqlite3.connect(self.DATABASE_FILE)
         self.cursor = self.connection.cursor()
         return self.cursor, self.connection
 
@@ -211,13 +214,13 @@ class DirectoryManager:
         return self.inventory_dir
 
     def get_database_dir(self):
-        return self.database_dir
+        return Path(self.DATABASE_FILE).resolve()
 
     def get_reports_dir(self):
         return self.reports_dir
 
     def get_manual_json(self):
-        return self.manual_json
+        return Path(self.MANUAL_SORT_JSON).resolve()
 
     def get_logger(self):
 
@@ -282,7 +285,6 @@ class DirectoryManager:
             self.manual_sort_dir = directories.get('manual_sort_dir')
             self.logbook_dir = directories.get('logbook_dir')
             self.inventory_dir = directories.get('inventory_dir')
-            self.database_dir = directories.get('database_dir')
             self.reports_dir = directories.get('reports_dir')
 
         config_dict = {
@@ -291,9 +293,7 @@ class DirectoryManager:
             'manual_sort_dir': self.manual_sort_dir,
             'logbook_dir': self.logbook_dir,
             'inventory_dir': self.inventory_dir,
-            'database_dir': self.database_dir,
             'reports_dir': self.reports_dir,
-            'manual_json': self.manual_json,
             'multi_cores': self.multi_cores,
             'restock_days': self.restock_days,
             'last_inventory': self.last_inventory,
@@ -308,3 +308,9 @@ class DirectoryManager:
 
     def get_inventory_file(self):
         return self.INVENTORY_FILE
+
+    def set_running_status(self, case):
+        self.running = case
+
+    def is_running(self):
+        return self.running

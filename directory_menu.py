@@ -58,21 +58,13 @@ class DirectoryMenu(ct.CTkFrame):
                                                   command=lambda: self.select_directory("inventory_page"))
         self.inventory_page_button.grid(row=5, column=8, columnspan=1, sticky="w", padx=25, pady=10)
 
-        self.database_label = ct.CTkLabel(self, text="Used Parts Database:")
-        self.database_label.grid(row=6, column=0, columnspan=3, sticky="e", pady=10, padx=10)
-        self.database_directory = ct.CTkEntry(self, width=magic_width)
-        self.database_directory.grid(row=6, column=3, columnspan=4, sticky="w", padx=25, pady=10)
-        self.database_button = ct.CTkButton(self, text="Browse",
-                                            command=lambda: self.select_file("database"))
-        self.database_button.grid(row=6, column=8, columnspan=1, sticky="w", padx=25, pady=10)
-
         self.reports_label = ct.CTkLabel(self, text="Reports:")
-        self.reports_label.grid(row=7, column=0, columnspan=3, sticky="e", pady=10, padx=10)
+        self.reports_label.grid(row=6, column=0, columnspan=3, sticky="e", pady=10, padx=10)
         self.reports_directory = ct.CTkEntry(self, width=magic_width)
-        self.reports_directory.grid(row=7, column=3, columnspan=4, sticky="w", padx=25, pady=10)
+        self.reports_directory.grid(row=6, column=3, columnspan=4, sticky="w", padx=25, pady=10)
         self.reports_button = ct.CTkButton(self, text="Browse",
-                                            command=lambda: self.select_file("reports"))
-        self.reports_button.grid(row=7, column=8, columnspan=1, sticky="w", padx=25, pady=10)
+                                            command=lambda: self.select_directory("reports"))
+        self.reports_button.grid(row=6, column=8, columnspan=1, sticky="w", padx=25, pady=10)
 
         self.populate_directories()
 
@@ -92,18 +84,8 @@ class DirectoryMenu(ct.CTkFrame):
         self.inventory_page_directory.delete(0, len(self.manager.inventory_dir))
         self.inventory_page_directory.insert(0, self.manager.inventory_dir)
 
-        self.database_directory.delete(0, len(self.manager.database_dir))
-        self.database_directory.insert(0, self.manager.database_dir)
-
         self.reports_directory.delete(0, len(self.manager.reports_dir))
         self.reports_directory.insert(0, self.manager.reports_dir)
-
-    def select_file(self, option):
-        file = filedialog.askopenfilename(title="Select Database File")
-        if file:
-            if option == "database":
-                self.database_directory.delete(0, len(self.manager.database_dir))
-                self.database_directory.insert(0, str(Path(file)))
 
     def select_directory(self, option):
         directory = filedialog.askdirectory()
@@ -123,6 +105,9 @@ class DirectoryMenu(ct.CTkFrame):
             elif option == "inventory_page":
                 self.inventory_page_directory.delete(0, len(self.manager.inventory_dir))
                 self.inventory_page_directory.insert(0, str(Path(directory)))
+            elif option == "reports":
+                self.reports_directory.delete(0, len(self.manager.reports_dir))
+                self.reports_directory.insert(0, str(Path(directory)))
             else:
                 pass
 
@@ -134,7 +119,6 @@ class DirectoryMenu(ct.CTkFrame):
             "manual_sort_dir": str(Path(self.manual_sort_directory.get())),
             "logbook_dir": str(Path(self.logbook_directory.get())),
             "inventory_dir": str(Path(self.inventory_page_directory.get())),
-            "database_dir": str(Path(self.database_directory.get())),
             "reports_dir": str(Path(self.reports_directory.get()))
         }
         self.manager.write_settings(directories=data)

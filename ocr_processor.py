@@ -53,9 +53,16 @@ def ocr_file(file):
     text = pytesseract.image_to_data(preprocessed_image, lang="eng",
                                      config=custom_config, output_type=pytesseract.Output.DICT)
 
-    filtered_text = [
-        word for word, conf in zip(text['text'], text['conf'])
-        if word.strip() and int(conf) > 0 and len(word) > 2
-    ]
+    filtered_text = []
+
+    for word, conf in zip(text['text'], text['conf']):
+        if int(conf) > 0 and len(word) > 2:
+            filtered_text.append(word)
+
+
+    #filtered_text = [
+    #    word for word, conf in zip(text['text'], text['conf'])
+    #    if word.strip() and int(conf) > 0 and len(word) > 2
+    #]
 
     return filtered_text

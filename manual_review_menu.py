@@ -26,46 +26,50 @@ class PDFViewer(ct.CTkFrame):
         self.zoom_factor = 1.75
 
         self.viewer_frame = ct.CTkScrollableFrame(self, corner_radius=0)
-        self.viewer_frame.grid(row=1, column=0, columnspan=9, rowspan=9, sticky='news')
+        self.viewer_frame.grid(row=1, column=0, columnspan=8, rowspan=9, sticky='news')
 
         self.image_label = ct.CTkLabel(self.viewer_frame, text="")
         self.image_label.grid(row=1, column=0, columnspan=9, rowspan=9, sticky='news')
 
+        self.brand_entry = ct.CTkEntry(self, placeholder_text="Brand")
+        self.brand_entry.grid(row=0, column=0, columnspan=2, padx=10)
+        self.entries.append(self.brand_entry)
+
         self.serial_num_entry = ct.CTkEntry(self, placeholder_text="Serial Number")
-        self.serial_num_entry.grid(row=0, column=0, columnspan=2, padx=10)
+        self.serial_num_entry.grid(row=0, column=2, columnspan=2, padx=10)
         self.entries.append(self.serial_num_entry)
 
         self.date_entry = ct.CTkEntry(self, placeholder_text="Date")
-        self.date_entry.grid(row=0, column=2, columnspan=2, padx=10)
+        self.date_entry.grid(row=0, column=4, columnspan=2, padx=10)
         self.entries.append(self.date_entry)
 
         self.delete_checkbox = ct.CTkCheckBox(self, text="Delete File")
-        self.delete_checkbox.grid(row=0, column=4, columnspan=2, padx=10)
+        self.delete_checkbox.grid(row=0, column=6, columnspan=2, padx=10)
 
         self.previous_button = ct.CTkButton(self, text="<", command=self.previous_log, width=50)
-        self.previous_button.grid(row=0, column=6, columnspan=1, padx=10, pady=10)
+        self.previous_button.grid(row=0, column=8, columnspan=1, padx=10, pady=10)
 
         self.next_button = ct.CTkButton(self, text=">", command=self.next_log, width=50)
-        self.next_button.grid(row=0, column=7, columnspan=1, padx=10, pady=10)
+        self.next_button.grid(row=0, column=9, columnspan=1, padx=10, pady=10)
 
         self.part_entry = ct.CTkEntry(self, placeholder_text="Part Number", width=100)
-        self.part_entry.grid(row=1, column=9, padx=5, pady=5)
+        self.part_entry.grid(row=1, column=8, padx=5, pady=5)
         self.entries.append(self.part_entry)
 
         self.quantity_entry = ct.CTkEntry(self, placeholder_text="QTY", width=50)
-        self.quantity_entry.grid(row=1, column=10, padx=5, pady=5)
+        self.quantity_entry.grid(row=1, column=9, padx=5, pady=5)
         self.entries.append(self.quantity_entry)
 
         self.add_part_button = ct.CTkButton(self, text="Add Part", command=self.add_part)
-        self.add_part_button.grid(row=2, column=9, columnspan=2, padx=5)
+        self.add_part_button.grid(row=2, column=8, columnspan=2, padx=5)
 
         self.parts_list = ct.CTkTextbox(self, width=150)
-        self.parts_list.grid(row=3, column=9, columnspan=2, padx=5, pady=5, rowspan=6)
+        self.parts_list.grid(row=3, column=8, columnspan=2, padx=5, pady=5, rowspan=6)
         self.parts_list.configure(state="disabled")
         self.part_line = 0
 
         self.submit_button = ct.CTkButton(self, text="Submit Logs", command=self.submit_logs)
-        self.submit_button.grid(row=9, column=9, columnspan=2, padx=5, pady=5)
+        self.submit_button.grid(row=9, column=8, columnspan=2, padx=5, pady=5)
 
         self.display_page()
 
@@ -86,9 +90,11 @@ class PDFViewer(ct.CTkFrame):
     def read_pages(self):
 
         pages_json = self.manager.get_manual_json()
-
-        with open(pages_json) as f:
-            data = json.load(f)
+        try:
+            with open(pages_json) as f:
+                data = json.load(f)
+        except json.decoder.JSONDecodeError:
+            return []
 
         return data
 
@@ -137,9 +143,15 @@ class PDFViewer(ct.CTkFrame):
             #self.image_label.configure(width=(page_width-200), height=(page_height-50))
             #image = ImageOps.contain(image, (1000, 900))
 
+            extracted_brand = self.pages[self.current_page]['brand']
             extracted_serial = self.pages[self.current_page]['serial_num']
             extracted_date = self.pages[self.current_page]['date']
             extracted_parts = self.pages[self.current_page].get('parts', '')
+
+            if extracted_serial:
+                self.brand_entry.insert(0, extracted_brand)
+            else:
+                self.brand_entry.configure(placeholder_text='Brand')
 
             if extracted_serial:
                 self.serial_num_entry.insert(0, extracted_serial)

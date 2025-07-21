@@ -11,8 +11,10 @@ from pathlib import Path
 from config import DirectoryManager
 from file_manager import populate_files
 from manufacturer_handler import manufacturer_multi
-from multiprocessing import Pool, Manager, set_start_method
+from multiprocessing import Pool, Manager, set_start_method, freeze_support
 from database_handler import database_add_files, barcode_wrapper
+
+freeze_support()
 
 class ProcessMenu(ct.CTkFrame):
 
@@ -20,6 +22,7 @@ class ProcessMenu(ct.CTkFrame):
         super().__init__(master)
 
         self.manager = DirectoryManager()
+        self.logger = self.manager.get_logger()
         self.manual_json = self.manager.get_manual_json()
 
         self.unsorted_label = ct.CTkLabel(self, text="Pages Ready to Sort:")
@@ -103,124 +106,141 @@ class ProcessMenu(ct.CTkFrame):
 
     def thread_multi(self):
 
+        self.manager.set_running_status(True)
         self.manager.create_logger()
         path = self.manager.unsorted_dir
 
+        barcode_length = 0
         try:
-            set_start_method('spawn', force=True)
-        except RuntimeError:
-            pass
 
-        with Manager() as manager:
+            try:
+                set_start_method('spawn', force=True)
+            except RuntimeError:
+                pass
 
-            manual_sort_list = manager.list()
+            with Manager() as manager:
 
-            files = populate_files(path)
-            self.progress.set("Status... EXTRACTING DATA FROM LOGS")
+                manual_sort_list = manager.list()
 
-            process_start = time.perf_counter()
-            #print(f"Start: {process_start}")
+                files = populate_files(path)
+                self.progress.set("Status... EXTRACTING DATA FROM LOGS")
 
-            cpu_count = max(1, os.cpu_count() // 2)
-            adjusted_cpu_count = min(cpu_count, max(1, len(files) // 25))
+                process_start = time.perf_counter()
+                #print(f"Start: {process_start}")
 
-            if len(files) > 0:
-                process_chunks = [files[i::adjusted_cpu_count] for i in range(adjusted_cpu_count)]
-                process_args = [(chunk, manual_sort_list) for chunk in process_chunks]
-                with Pool(processes=adjusted_cpu_count) as pool:
-                   pool.starmap(manufacturer_multi, process_args)
-
-            process_end = time.perf_counter()
-            print(f"OCR - Execution on {len(files)} files took {process_end - process_start:.2f} seconds.")
-
-            barcode_start = time.perf_counter()
-
-            self.progress.set("Status... EXTRACTING BARCODE DATA")
-            self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
-
-            # Get files
-            cursor, connection = self.manager.get_database()
-            cursor.execute('SELECT STEM FROM FILE_HASH')
-            processed_stems = [stem for stem, in cursor.fetchall()]
-
-            manual_review_files = []
-            with open(self.manual_json, 'r') as manual_files:
-                data = None
-                try:
-                    data = json.load(manual_files)
-                except Exception:
-                    pass
-                if data:
-                    manual_review_files = [
-                        Path(entry['file']).resolve() for entry in data
-                    ]
-
-            for entry in manual_sort_list:
-                manual_review_files.append(entry['file'])
-
-            files = []
-            for file in glob.glob(str(Path(self.manager.get_logbook_dir()).resolve() / '**' / '*.pdf'), recursive=True):
-                stem = Path(file).stem
-                if stem in processed_stems:
-                    continue
-                if file in manual_review_files:
-                    continue
-                files.append(file)
-
-            if len(files) > 0:
-
-                files_sorted = sorted(files, key=self.sort_key)
+                cpu_count = max(1, os.cpu_count() // 2)
                 adjusted_cpu_count = min(cpu_count, max(1, len(files) // 25))
 
-                barcode_list = manager.list()
-                barcode_chunks = [files_sorted[i::adjusted_cpu_count] for i in range(adjusted_cpu_count)]
-                barcode_args = [(chunk, barcode_list) for chunk in barcode_chunks]
+                if len(files) > 0:
+                    process_chunks = [files[i::adjusted_cpu_count] for i in range(adjusted_cpu_count)]
+                    process_args = [(chunk, manual_sort_list) for chunk in process_chunks]
+                    with Pool(processes=adjusted_cpu_count) as pool:
+                       pool.starmap(manufacturer_multi, process_args)
 
-                with Pool(processes=adjusted_cpu_count) as pool:
-                    pool.starmap(barcode_wrapper, barcode_args)
+                process_end = time.perf_counter()
+                print(f"OCR - Execution on {len(files)} files took {process_end - process_start:.2f} seconds.")
 
-                barcode_end = time.perf_counter()
-                print(f"Barcode - Execution on {len(files)} files took {barcode_end - barcode_start:.2f} seconds.")
+                barcode_start = time.perf_counter()
 
-                self.progress.set("Status... ADDING DATA TO DATABASE")
-                database_start = time.perf_counter()
-                barcode_length = len(barcode_list)
+                self.progress.set("Status... EXTRACTING BARCODE DATA")
+                self.manager.logger.info("Done processing all copied files in 'Unsorted'...\n")
 
-                for entry in barcode_list:
+                # Get files
+                cursor, connection = self.manager.get_database()
+                cursor.execute('SELECT STEM FROM FILE_HASH')
+                processed_stems = [stem for stem, in cursor.fetchall()]
 
-                    if not entry['parts_data']:
-                        file_name_parts = Path(entry['file']).stem.split('_')
+                manual_review_files = []
+                with open(self.manual_json, 'r') as manual_files:
+                    data = None
+                    try:
+                        data = json.load(manual_files)
+                    except Exception:
+                        print('here')
+                        pass
+                    if data:
+                        manual_review_files = [
+                            Path(entry['file']).resolve() for entry in data
+                        ]
 
-                        brand = None
-                        if 'Kyocera' in entry['file']:
-                            brand = 'Kyocera'
-                        elif 'HP' in entry['file']:
-                            brand = 'HP'
-                        elif 'Canon' in entry['file']:
-                            brand = 'Canon'
-                        elif 'Konica' in entry['file']:
-                            brand = 'Konica'
+                for entry in manual_sort_list:
+                    manual_review_files.append(entry['file'])
 
-                        manual_sort_list.append({
-                            'file': entry['file'],
-                            'serial_num': file_name_parts[1],
-                            'date': file_name_parts[0],
-                            'brand': brand,
-                            'parts': None
-                        })
-                    else:
-                        database_add_files(entry['file'], entry['parts_data'])
-                        #pass
-                
-                with open(self.manual_json, 'w') as local_manual_json:
-                    data = json.load(local_manual_json)
-                    data.append(entry for entry in list(manual_sort_list))
-                    json.dump(list(data), local_manual_json, indent=4)
+                files = []
+                for file in glob.glob(str(Path(self.manager.get_logbook_dir()).resolve() / '**' / '*.pdf'), recursive=True):
+                    stem = Path(file).stem
+                    if stem in processed_stems:
+                        continue
+                    if file in manual_review_files:
+                        continue
+                    files.append(file)
 
-            database_end = time.perf_counter()
-            print(f"Database - Execution on {barcode_length} files took {database_end - database_start:.2f} seconds.")
+                if len(files) > 0:
 
-        self.progress.set("Status... DONE")
+                    files_sorted = sorted(files, key=self.sort_key)
+                    adjusted_cpu_count = min(cpu_count, max(1, len(files) // 25))
+
+                    barcode_list = manager.list()
+                    barcode_chunks = [files_sorted[i::adjusted_cpu_count] for i in range(adjusted_cpu_count)]
+                    barcode_args = [(chunk, barcode_list) for chunk in barcode_chunks]
+
+                    with Pool(processes=adjusted_cpu_count) as pool:
+                        pool.starmap(barcode_wrapper, barcode_args)
+
+                    barcode_end = time.perf_counter()
+                    print(f"Barcode - Execution on {len(files)} files took {barcode_end - barcode_start:.2f} seconds.")
+
+                    self.progress.set("Status... ADDING DATA TO DATABASE")
+                    database_start = time.perf_counter()
+                    barcode_length = len(barcode_list)
+
+                    for entry in barcode_list:
+
+                        if not entry['parts_data']:
+                            file_name_parts = Path(entry['file']).stem.split('_')
+
+                            brand = None
+                            if 'Kyocera' in entry['file']:
+                                brand = 'Kyocera'
+                            elif 'HP' in entry['file']:
+                                brand = 'HP'
+                            elif 'Canon' in entry['file']:
+                                brand = 'Canon'
+                            elif 'Konica' in entry['file']:
+                                brand = 'Konica'
+
+                            manual_sort_list.append({
+                                'file': entry['file'],
+                                'serial_num': file_name_parts[1],
+                                'date': file_name_parts[0],
+                                'brand': brand,
+                                'parts': None
+                            })
+                        else:
+                            database_add_files(entry['file'], entry['parts_data'])
+                            #pass
+
+                    with open(self.manual_json, 'r') as local_manual_json:
+                        try:
+                            data = json.load(local_manual_json)
+                        except Exception as e:
+                            data = []
+
+                    with open(self.manual_json, 'w') as local_manual_json:
+                        for entry in list(manual_sort_list):
+                            if entry not in data:
+                                data.append(entry)
+                        json.dump(data, local_manual_json, indent=4)
+
+                    database_end = time.perf_counter()
+                    print(f"Database - Execution on {barcode_length} files took {database_end - database_start:.2f} seconds.")
+
+            self.progress.set("Status... DONE")
+        except Exception as e:
+            self.logger.info(f"\n{e}\n")
+            self.progress.set("Status... ERROR")
+        finally:
+            self.manager.set_running_status(False)
 
     def sort_key(self, file):
         name = Path(file).stem.split('_')

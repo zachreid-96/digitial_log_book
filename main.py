@@ -1,7 +1,9 @@
+import gc
 import os
 
 import customtkinter as ct
 
+from gc import collect
 from help_menu import HelpMenu
 from about_menu import AboutMenu
 from config import DirectoryManager
@@ -75,15 +77,22 @@ class Log_Book_GUI(ct.CTk):
                                          command=self.show_about_menu)
         self.About_button.grid(row=8, column=0, padx=20, pady=10)
 
-        self.tool_tips_button = ct.CTkButton(self.sidebar_frame, text="Display Menu Tips",
-                                         command=self.toggle_menu_tips)
-        self.tool_tips_button.grid(row=9, column=0, padx=20, pady=10)
+        self.tool_tips_button = ct.CTkButton(self.sidebar_frame, text="?",
+                                         command=self.toggle_menu_tips, width=25)
+        self.tool_tips_button.grid(row=9, column=0, padx=(20, 0), pady=10, sticky='w')
+
+        self.tool_tips_text = ct.CTkLabel(self.sidebar_frame, text="<<<   Menu Tips", width=75)
+        self.tool_tips_text.grid(row=9, column=0, padx=(55, 0), pady=10, sticky='w')
 
         self.current_view = None
 
-        self._switch_view(AboutMenu)
+        self._switch_view(ProcessMenu)
 
     def toggle_menu_tips(self):
+
+        #print("fg_color", self.tool_tips_button.cget('fg_color'))
+        #print("hover_color", self.tool_tips_button.cget('hover_color'))
+
         self.manager.menu_tips = not self.manager.menu_tips
         self.manager.write_settings()
         try:
@@ -93,10 +102,34 @@ class Log_Book_GUI(ct.CTk):
 
     # Switches Frame to the selected one
     def _switch_view(self, view_class):
+
+        if self.manager.is_running():
+            return
+
+        menus = {
+            "ProcessMenu": self.Process_button,
+            "ReportsMenu": self.Reports_button,
+            "PDFViewer": self.Manual_button,
+            "DirectoryMenu": self.Directories_button,
+            "InventoryMenu": self.Inventory_button,
+            "SettingsMenu": self.Settings_button,
+            "HelpMenu": self.Help_button,
+            "AboutMenu": self.About_button
+        }
+
+        for menu in menus.values():
+            #print(menu)
+            menu.configure(fg_color=['#3B8ED0', '#1F6AA5'])
+
         if self.current_view:
             if 'directory' in str(self.current_view):
                 self.current_view.save_directories_locations()
             self.current_view.destroy()
+            collect()
+
+        menu = menus.get(view_class.__name__, None)
+        if menu is not None:
+            menu.configure(fg_color=['#36719F', '#144870'])
 
         self.current_view = view_class(self.user_menu_frame)
         self.current_view.pack(fill="both", expand=True)
@@ -148,24 +181,13 @@ class Log_Book_GUI(ct.CTk):
             if not os.path.exists(folder):
                 os.mkdir(folder)
 
-        database_file = os.path.join(pathing, 'Used Parts Database.db')
-        manual_json = os.path.join(pathing, 'manual_sort.json')
-
-        # Creates all needed files, if not already created
-        for file in [database_file, manual_json]:
-            if not os.path.exists(file):
-                with open(file, 'w') as f:
-                    pass
-
         json_dict = {
             'unsorted_dir': ready_sort,
             'runlog_dir': runtime_logs,
             'manual_sort_dir': manual_sort,
             'logbook_dir': used_parts,
             'inventory_dir': inventory_pages,
-            'database_dir': database_file,
             'reports_dir': reports,
-            'manual_json': manual_json,
             'multi_cores': 0,
             'restock_days': 3,
             'last_inventory': None,
