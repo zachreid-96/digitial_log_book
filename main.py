@@ -1,5 +1,5 @@
-import gc
 import os
+import ctypes
 
 import customtkinter as ct
 
@@ -13,6 +13,11 @@ from settings_menu import SettingsMenu
 from directory_menu import DirectoryMenu
 from inventory_menu import InventoryMenu
 from manual_review_menu import PDFViewer
+
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    pass
 
 class Log_Book_GUI(ct.CTk):
     def __init__(self):

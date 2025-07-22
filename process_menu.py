@@ -138,7 +138,7 @@ class ProcessMenu(ct.CTkFrame):
                        pool.starmap(manufacturer_multi, process_args)
 
                 process_end = time.perf_counter()
-                print(f"OCR - Execution on {len(files)} files took {process_end - process_start:.2f} seconds.")
+                #print(f"OCR - Execution on {len(files)} files took {process_end - process_start:.2f} seconds.")
 
                 barcode_start = time.perf_counter()
 
@@ -156,7 +156,7 @@ class ProcessMenu(ct.CTkFrame):
                     try:
                         data = json.load(manual_files)
                     except Exception:
-                        print('here')
+                        #print('here')
                         pass
                     if data:
                         manual_review_files = [
@@ -188,7 +188,7 @@ class ProcessMenu(ct.CTkFrame):
                         pool.starmap(barcode_wrapper, barcode_args)
 
                     barcode_end = time.perf_counter()
-                    print(f"Barcode - Execution on {len(files)} files took {barcode_end - barcode_start:.2f} seconds.")
+                    #print(f"Barcode - Execution on {len(files)} files took {barcode_end - barcode_start:.2f} seconds.")
 
                     self.progress.set("Status... ADDING DATA TO DATABASE")
                     database_start = time.perf_counter()
@@ -233,7 +233,7 @@ class ProcessMenu(ct.CTkFrame):
                         json.dump(data, local_manual_json, indent=4)
 
                     database_end = time.perf_counter()
-                    print(f"Database - Execution on {barcode_length} files took {database_end - database_start:.2f} seconds.")
+                    #print(f"Database - Execution on {barcode_length} files took {database_end - database_start:.2f} seconds.")
 
             self.progress.set("Status... DONE")
         except Exception as e:

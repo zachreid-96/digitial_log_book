@@ -120,6 +120,18 @@ class PDFViewer(ct.CTkFrame):
         if len(self.pages) == 0:
             self.image_label.configure(text="No PDF's need reviewing!")
 
+            self.brand_entry.configure(placeholder_text='Brand')
+            self.serial_num_entry.configure(placeholder_text='Serial Number')
+            self.date_entry.configure(placeholder_text='Date')
+            self.part_entry.configure(placeholder_text="Part Number")
+            self.quantity_entry.configure(placeholder_text="QTY")
+
+            self.brand_entry.configure(state='disabled')
+            self.serial_num_entry.configure(state='disabled')
+            self.date_entry.configure(state='disabled')
+            self.part_entry.configure(state='disabled')
+            self.quantity_entry.configure(state='disabled')
+
         else:
 
             dpi = int(300 * self.zoom_factor)
@@ -148,7 +160,7 @@ class PDFViewer(ct.CTkFrame):
             extracted_date = self.pages[self.current_page]['date']
             extracted_parts = self.pages[self.current_page].get('parts', '')
 
-            if extracted_serial:
+            if extracted_brand:
                 self.brand_entry.insert(0, extracted_brand)
             else:
                 self.brand_entry.configure(placeholder_text='Brand')

@@ -82,7 +82,6 @@ class DirectoryManager:
             cls._instance.restock_days = 3
             cls._instance.last_inventory = None
             cls._instance.appearance = 'System'
-            cls._instance.scaling = '100%'
             cls._instance.logger = None
             cls._instance.cursor = None
             cls._instance.connection = None
