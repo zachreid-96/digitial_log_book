@@ -67,18 +67,20 @@ Reports Menu
   - Show total quantity of each part used, sorted by highest usage
   - Includes daily/weekly usage averages and suggested car stock values per item
 
-- Stock Comparison Tool
+- Stock Comparison Tool (Implemented)
   - Compare parts used during report timeframe to user-inputted car stock
   - Highlights overstock, understock, and dead inventory (never used)
 
-- Inventory Management Menu
+- Inventory Management Menu (Implemented)
   - Add/import car stock (CSV or manual entry)
   - Save and update inventory levels per tech
   - Integrate with usage reports for live insights
 
 ## Requirements
-- Software: Python 3.11+
+- Software: Python 3.12+
 - Libraries: tkinter, webbrowser, os, json, pathlib, re, datetime, rapidfuzz, logging, shutil, glob, PIL, fitz, pytesseract
+- Dependencies: Tesseract-OCR
+- Tesseract-OCR: Put in PATH via System Environment Variables
 
 ## License
 This project is licensed under the MIT License, allowing for open use and modification.
