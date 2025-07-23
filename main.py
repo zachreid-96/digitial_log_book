@@ -16,8 +16,19 @@ from manual_review_menu import PDFViewer
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
-except Exception:
+except Exception as e:
+    #print(e)
     pass
+
+def get_window_scaling():
+    try:
+        hdc = ctypes.windll.user32.GetDC(0)
+        dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        return dpi_x / 96
+    except Exception as e:
+        #print(e)
+        return 1
 
 class Log_Book_GUI(ct.CTk):
     def __init__(self):
@@ -31,6 +42,7 @@ class Log_Book_GUI(ct.CTk):
         self.title("Digital Log Book")
         self.geometry(f"{1000}x{500}")
         self.minsize(1000, 500)
+        self.maxsize(1000, 500)
 
         self.grid_columnconfigure(2, weight=1)
         self.grid_rowconfigure((0, 1, 2), weight=1)

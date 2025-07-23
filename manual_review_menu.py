@@ -1,6 +1,7 @@
 import os
 import fitz
 import json
+import ctypes
 
 import customtkinter as ct
 
@@ -8,6 +9,16 @@ from PIL import Image
 from config import DirectoryManager
 from file_manager import move_file_manual_sort
 from database_handler import database_add_files
+
+def get_window_scaling():
+    try:
+        hdc = ctypes.windll.user32.GetDC(0)
+        dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        return dpi_x / 96
+    except Exception as e:
+        #print(e)
+        return 1
 
 class PDFViewer(ct.CTkFrame):
 
@@ -100,9 +111,11 @@ class PDFViewer(ct.CTkFrame):
 
     def display_page(self):
 
+        scaling = 2 - get_window_scaling()
+
         self.master.update_idletasks()
-        frame_width = self.master.winfo_width() - 200
-        frame_height = self.master.winfo_height() - 50
+        frame_width = (self.master.winfo_width() * scaling) - (200 * scaling)
+        frame_height = (self.master.winfo_height() * scaling) - (50 * scaling)
 
         self.serial_num_entry.delete(0, 25)
         self.date_entry.delete(0, 25)
