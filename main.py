@@ -181,7 +181,7 @@ class Log_Book_GUI(ct.CTk):
     """
     def setup_project(self):
 
-        pathing = os.path.join(os.environ['USERPROFILE'], 'Parts_Log')
+        pathing = os.path.join(os.environ['USERPROFILE'], 'Parts Logger')
 
         if not os.path.exists(pathing):
             os.mkdir(pathing)
