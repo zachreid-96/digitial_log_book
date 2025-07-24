@@ -1,11 +1,7 @@
-import json
-
 import customtkinter as ct
 
 from os import cpu_count
-from pathlib import Path
 from datetime import datetime
-from tkinter import filedialog
 from config import DirectoryManager
 from customtkinter import ThemeManager
 
@@ -119,15 +115,17 @@ class SettingsMenu(ct.CTkFrame):
 
     def save_selections(self):
 
-        if self.last_inventory_date.get():
-            if self.is_valid_date(self.last_inventory_date.get()):
-                self.last_inventory_date.configure(fg_color=ThemeManager.theme['CTkEntry']['fg_color'])
-                settings = {
-                    'selected_cores': self.cpu_counter.cget('values')[1],
-                    'selected_restocks': self.restock_recommendation.cget('values')[1],
-                    'selected_inventory': self.last_inventory_date.get(),
-                    'selected_appearance': self.appearance_mode_optionemenu.get()
-                }
-                self.manager.write_settings(settings=settings)
-            else:
-                self.last_inventory_date.configure(fg_color='#cd6155')
+        if self.is_valid_date(self.last_inventory_date.get()):
+            self.last_inventory_date.configure(fg_color=ThemeManager.theme['CTkEntry']['fg_color'])
+            inventory_date = self.last_inventory_date.get()
+        else:
+            self.last_inventory_date.configure(fg_color='#cd6155')
+            inventory_date = None
+
+        settings = {
+            'selected_cores': self.cpu_counter.cget('values')[1],
+            'selected_restocks': self.restock_recommendation.cget('values')[1],
+            'selected_inventory': inventory_date,
+            'selected_appearance': self.appearance_mode_optionemenu.get()
+        }
+        self.manager.write_settings(settings=settings)

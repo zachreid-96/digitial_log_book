@@ -1,11 +1,10 @@
 import re
-import cv2
 import fitz
 import pytesseract
 
-import numpy as np
-
 from PIL import Image
+from numpy import array
+from cv2 import cvtColor, resize, GaussianBlur, threshold, COLOR_RGB2GRAY, INTER_LINEAR, THRESH_BINARY, THRESH_OTSU
 
 """
 Description: 
@@ -35,15 +34,15 @@ def ocr_file(file):
         pass
 
     # Convert to grayscale to simplify the image and reduce noise
-    cv_image = np.array(image)
-    gray = cv2.cvtColor(cv_image, cv2.COLOR_RGB2GRAY)
+    cv_image = array(image)
+    gray = cvtColor(cv_image, COLOR_RGB2GRAY)
 
     # Resizes image and applies slight GaussianBlur for letter definition
-    gray = cv2.resize(gray, None, fx=1.75, fy=1.75, interpolation=cv2.INTER_LINEAR)
-    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    gray = resize(gray, None, fx=1.75, fy=1.75, interpolation=INTER_LINEAR)
+    gray = GaussianBlur(gray, (3, 3), 0)
 
     # Apply OTSU thresholding to binarize the image (helps separate text from background)
-    _, otsu = cv2.threshold(gray, 0, 220, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, otsu = threshold(gray, 0, 220, THRESH_BINARY + THRESH_OTSU)
 
     preprocessed_image = Image.fromarray(gray)
 

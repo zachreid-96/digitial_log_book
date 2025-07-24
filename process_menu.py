@@ -11,8 +11,8 @@ from pathlib import Path
 from config import DirectoryManager
 from file_manager import populate_files
 from manufacturer_handler import manufacturer_multi
-from multiprocessing import Pool, Manager, set_start_method, freeze_support
 from database_handler import database_add_files, barcode_wrapper
+from multiprocessing import Pool, Manager, set_start_method, freeze_support
 
 freeze_support()
 
