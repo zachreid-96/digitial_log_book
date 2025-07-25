@@ -117,6 +117,7 @@ class PDFViewer(ct.CTkFrame):
         frame_width = (self.master.winfo_width() * scaling) - (200 * scaling)
         frame_height = (self.master.winfo_height() * scaling) - (50 * scaling)
 
+        self.brand_entry.delete(0, 25)
         self.serial_num_entry.delete(0, 25)
         self.date_entry.delete(0, 25)
         self.delete_checkbox.deselect()
@@ -131,6 +132,9 @@ class PDFViewer(ct.CTkFrame):
         self.viewer_frame.configure(width=frame_width, height=frame_height)
 
         if len(self.pages) == 0:
+            self.image_label.configure(image=None)
+
+            self.image_label.image = None
             self.image_label.configure(text="No PDF's need reviewing!")
 
             self.brand_entry.configure(placeholder_text='Brand')
@@ -172,6 +176,7 @@ class PDFViewer(ct.CTkFrame):
             extracted_serial = self.pages[self.current_page]['serial_num']
             extracted_date = self.pages[self.current_page]['date']
             extracted_parts = self.pages[self.current_page].get('parts', '')
+            marked_deletion = self.pages[self.current_page].get('deletion', False)
 
             if extracted_brand:
                 self.brand_entry.insert(0, extracted_brand)
@@ -187,6 +192,12 @@ class PDFViewer(ct.CTkFrame):
                 self.date_entry.insert(0, extracted_date)
             else:
                 self.date_entry.configure(placeholder_text='Date')
+
+            if marked_deletion:
+                self.delete_checkbox.select()
+            else:
+                self.delete_checkbox.deselect()
+
 
             if extracted_parts:
                 self.parts_list.configure(state='normal')
@@ -223,10 +234,19 @@ class PDFViewer(ct.CTkFrame):
 
     def data_capture_edits(self):
 
+        if len(self.pages) == 0:
+            return
+
         filtered_parts = [
             part_qty for part_qty in self.parts_list.get('0.0', 'end').split('\n')
             if part_qty != ''
         ]
+
+        try:
+            temp = [entry.split(' x ') for entry in filtered_parts]
+            new_tuple = [(entry[0], int(entry[1])) for entry in temp]
+        except Exception as e:
+            pass
 
         self.pages[self.current_page]['serial_num'] = self.serial_num_entry.get()
         self.pages[self.current_page]['date'] = self.date_entry.get()
@@ -240,31 +260,37 @@ class PDFViewer(ct.CTkFrame):
         removable_pages = []
 
         for file in self.pages:
-            if any(item for item in
-                   [file['serial_num'], file['date'], file['brand'], file['parts']]
-                   ) is not None:
+            if all(file.get(key, None) not in [None, "", []] for key in ('serial_num', 'brand', 'date', 'parts')):
                 move_file_manual_sort(file)
-            break
 
         for file in self.pages:
             if file.get('new_file', None) is not None and file['brand'] != 'Inventory':
-                database_add_files(file['new_file'], file['parts'])
+                try:
+                    temp_arr = [entry.split(' x ') for entry in file['parts']]
+                    new_parts_tuple = [(entry[0], int(entry[1])) for entry in temp_arr]
+                    database_add_files(file['new_file'], new_parts_tuple)
+                except Exception as e:
+                    pass
 
             if file.get('new_file', None) is not None:
                 removable_pages.append(file)
             if file.get('deletion', False) is True:
                 removable_pages.append(file)
-                os.remove(file)
+                os.remove(file['file'])
 
         still_needs_review = [file for file in self.pages
                               if file not in removable_pages]
-
+        print(still_needs_review)
         pages_json = self.manager.get_manual_json()
 
         with open(pages_json, 'w') as local_manual_json:
-            data = json.load(local_manual_json)
-            data.append(entry for entry in list(still_needs_review))
+            data = [entry for entry in list(still_needs_review)]
+            print(data)
             json.dump(list(data), local_manual_json, indent=4)
+
+        self.current_page = 0
+        self.pages = self.read_pages()
+        self.display_page()
 
     def remove_focus(self, event):
         for entry in self.entries:

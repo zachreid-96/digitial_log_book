@@ -141,6 +141,10 @@ class Log_Book_GUI(ct.CTk):
         if self.current_view:
             if 'directory' in str(self.current_view):
                 self.current_view.save_directories_locations()
+            if 'settings' in str(self.current_view):
+                self.current_view.save_selections()
+            if 'pdfviewer' in str(self.current_view):
+                self.current_view.submit_logs()
             self.current_view.destroy()
             collect()
 

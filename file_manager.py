@@ -280,7 +280,7 @@ def move_file_manual_sort(dict_obj, multiple=True):
                                         \t MOVED {new_filename}.pdf_{count} to {destination_folder}
                                         \t DELETED {file.split("\\")[-1]} in {unsorted_path}"""
 
-                    dict_obj['new_file'] = os.path.join(destination_folder, f"{new_filename}.pdf")
+                    dict_obj['new_file'] = os.path.join(destination_folder, f"{new_filename}_{count}.pdf")
                     logger.info(message)
                     break
                 count += 1
