@@ -280,12 +280,12 @@ class PDFViewer(ct.CTkFrame):
 
         still_needs_review = [file for file in self.pages
                               if file not in removable_pages]
-        print(still_needs_review)
+        #print(still_needs_review)
         pages_json = self.manager.get_manual_json()
 
         with open(pages_json, 'w') as local_manual_json:
             data = [entry for entry in list(still_needs_review)]
-            print(data)
+            #print(data)
             json.dump(list(data), local_manual_json, indent=4)
 
         self.current_page = 0

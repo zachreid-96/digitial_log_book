@@ -1,5 +1,7 @@
 import os
+import json
 import ctypes
+import shutil
 
 import customtkinter as ct
 
@@ -10,6 +12,7 @@ from config import DirectoryManager
 from process_menu import ProcessMenu
 from reports_menu import ReportsMenu
 from settings_menu import SettingsMenu
+from CTkMessagebox import CTkMessagebox
 from directory_menu import DirectoryMenu
 from inventory_menu import InventoryMenu
 from manual_review_menu import PDFViewer
@@ -30,11 +33,40 @@ def get_window_scaling():
         #print(e)
         return 1
 
+def upload_database():
+    manager = DirectoryManager()
+    database_file = manager.get_database_dir()
+
+    one_drive_location = os.path.join(os.environ.get("OneDrive"), "Parts Logger Database")
+
+    if not os.path.exists(one_drive_location):
+        os.mkdir(one_drive_location)
+
+    shutil.copy2(database_file, os.path.join(one_drive_location, "parts.db"))
+    return
+
+def on_closing(event=None):
+
+    if not app.manager.is_running():
+        message_box = CTkMessagebox(title="Still Running...",
+                                    message="Process is still running. Quitting now may result in data loss. Quit?",
+                                    icon="question", option_1="No", option_2="Yes")
+
+        user_response = message_box.get()
+        if user_response == "Yes":
+            app.destroy()
+
+    else:
+        upload_database()
+        app.destroy()
+
 class Log_Book_GUI(ct.CTk):
+
     def __init__(self):
         super().__init__()
 
         self.manager = DirectoryManager()
+        self.protocol("WM_DELETE_WINDOW", on_closing)
 
         if not self.manager.is_setup():
             self.setup_project()
@@ -73,6 +105,11 @@ class Log_Book_GUI(ct.CTk):
         self.Manual_button = ct.CTkButton(self.sidebar_frame, text="Manual Review",
                                           command=self.show_manual_menu)
         self.Manual_button.grid(row=3, column=0, padx=20, pady=10)
+        manual_review_pages = self.manager.get_manual_json()
+        with open(manual_review_pages, 'r') as f:
+            data = json.load(f)
+        len_pages = len(data)
+        self.Manual_button.configure(text=f"Manual Review ({len_pages})")
 
         self.Directories_button = ct.CTkButton(self.sidebar_frame, text="Directories",
                                                command=self.show_directories_menu)
@@ -145,6 +182,8 @@ class Log_Book_GUI(ct.CTk):
                 self.current_view.save_selections()
             if 'pdfviewer' in str(self.current_view):
                 self.current_view.submit_logs()
+                manual_review_pages = len(self.current_view.pages)
+                self.Manual_button.configure(text=f"Manual Review ({manual_review_pages})")
             self.current_view.destroy()
             collect()
 

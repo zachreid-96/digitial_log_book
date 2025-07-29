@@ -78,8 +78,9 @@ def manufacturer_wrapper(file, data, manual_sort_list=None):
     kyocera_subset = {"KYOCERA": 7, "STATUS": 2, "KPDL": 7, "FIRMWARE": 2, "VERSION": 2, "KIR": 7}
     hp_subset = {"HP": 7, "USAGE": 6, "PAGE": 1, "INFORMATION": 2, "CONFIGURATION": 3, "LaserJet": 4}
     canon_subset = {"COUNTER": 2, "REPORT": 2, "DEVICE": 1, "INSTALLATION": 4, "DATE": 1}
+    konica_subset = {"METER": 2, "NO.": 5, "TC:": 5, "SERIAL": 2}
 
-    match_threshhold = 80
+    match_threshhold = 90
 
     if data is None:
         file_manager_wrapper(file=file, serial_number=None, date=None, brand=None, manual_sort_list=manual_sort_list)
@@ -92,6 +93,8 @@ def manufacturer_wrapper(file, data, manual_sort_list=None):
         parse_hp(file, data, manual_sort_list)
     elif fuzzy_subset(canon_subset, data, match_threshhold):
         parse_canon(file, data, manual_sort_list)
+    elif fuzzy_subset(konica_subset, data, match_threshhold):
+        parse_konica(file, data, manual_sort_list)
     else:
         file_manager_wrapper(file=file, serial_number=None, date=None, brand=None, manual_sort_list=manual_sort_list)
 
@@ -233,6 +236,35 @@ def parse_canon(file, data, manual_sort_list=None):
         temp = entry.strip()
         if (serial_number is None and any(char.isdigit() for char in temp)
                 and any(char.isalpha() for char in temp) and len(temp) == 8):
+            serial_number = temp
+            if any(char in lower for char in temp):
+                bad_serial_flag = True
+        if date is None:
+            try:
+                date = datetime.strptime(normalize_date(temp), '%m/%d/%Y')
+                if date.year > datetime.now().year:
+                    date = None
+            except Exception:
+                pass
+
+        if date is not None and serial_number is not None:
+            break
+
+    file_manager_wrapper(file=file, serial_number=serial_number, date=date,
+                         brand='Canon', manual_sort_list=manual_sort_list, flagged=bad_serial_flag)
+
+
+def parse_konica(file, data, manual_sort_list=None):
+    date = None
+    serial_number = None
+
+    lower = 'abcdefghijklmnopqrstuvwxyz-_[].,;:()#/?<>|'
+    bad_serial_flag = False
+
+    for entry in data:
+        temp = entry.strip()
+        if (serial_number is None and any(char.isdigit() for char in temp)
+                and any(char.isalpha() for char in temp) and len(temp) >= 12):
             serial_number = temp
             if any(char in lower for char in temp):
                 bad_serial_flag = True
